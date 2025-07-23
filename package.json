@@ -1,5 +1,5 @@
 {
-  "name": "hardhat-project",
+  "name": "cash-tracker",
   "scripts": {
     "test": "hardhat test",
     "compile": "hardhat compile",
@@ -8,5 +8,10 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "hardhat": "^2.25.0"
+  },
+  "dependencies": {
+    "@account-abstraction/contracts": "^0.8.0",
+    "@openzeppelin/contracts": "^5.4.0",
+    "account-abstraction@v0.7.0": "link:eth-infinitism/account-abstraction@v0.7.0"
   }
 }
