@@ -3,7 +3,10 @@
   "scripts": {
     "test": "hardhat test",
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.js"
+    "deploy": "hardhat run scripts/deploy.js",
+    "setup:env": "node scripts/setup-env.js",
+    "deploy:common:base-sepolia": "hardhat ignition deploy ignition/modules/SmartAccount.ts --network base-sepolia",
+    "deploy:smart-account:base-sepolia": "hardhat ignition deploy ignition/modules/SmartAccount.ts --network base-sepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

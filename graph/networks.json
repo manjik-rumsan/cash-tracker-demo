@@ -1,0 +1,8 @@
+{
+  "base-sepolia": {
+    "CashToken": {
+      "address": "0xc3E3282048cB2F67b8e08447e95c37f181E00133",
+      "startBlock": 28784886
+    }
+  }
+}
