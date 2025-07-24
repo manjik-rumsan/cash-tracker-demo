@@ -30,3 +30,23 @@ dataSources:
         - event: Transfer(indexed address,indexed address,uint256)
           handler: handleTransfer
       file: ./src/cash-token.ts
+  - kind: ethereum
+    name: SmartAccount
+    network: base-sepolia
+    source:
+      address: "0xacb597D34341f3a45bFdE257A9719425170B1470"
+      abi: SmartAccount
+      startBlock: 28784958
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - SmartAccountOwnershipTransferred
+      abis:
+        - name: SmartAccount
+          file: ./abis/SmartAccount.json
+      eventHandlers:
+        - event: OwnershipTransferred(indexed address,indexed address)
+          handler: handleOwnershipTransferred
+      file: ./src/smart-account.ts
