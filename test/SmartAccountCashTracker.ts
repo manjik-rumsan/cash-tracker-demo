@@ -2,7 +2,7 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import hre from "hardhat";
 
-describe("SmartAccount with CashToken", function () {
+describe("CashTracker with SmartAccount", function () {
   // Define a fixture to reuse the same setup in every test
   async function deployFixture() {
     // Deploy EntryPoint
@@ -10,95 +10,104 @@ describe("SmartAccount with CashToken", function () {
     const entryPoint = await EntryPointFactory.deploy();
     
     // Get signers
-    const [owner, otherAccount] = await hre.ethers.getSigners();
+    const [owner,entity1,entity2,entity3, otherAccount] = await hre.ethers.getSigners();
 
     // Deploy SmartAccount
     const SmartAccountFactory = await hre.ethers.getContractFactory("SmartAccount");
-    const smartAccount = await SmartAccountFactory.deploy(entryPoint.target);
-    
-    // Fund the smart account
-    await owner.sendTransaction({
-      to: smartAccount.target,
-      value: hre.ethers.parseEther("1.0"), // Send 1 ETH to the smart account
-    });
-    
+    const entity1SmartAccount = await SmartAccountFactory.connect(entity1).deploy(entryPoint.target);
+    const entity2SmartAccount = await SmartAccountFactory.connect(entity2).deploy(entryPoint.target);
+    const entity3SmartAccount = await SmartAccountFactory.connect(entity3).deploy(entryPoint.target);
+
     // Deploy CashToken
     const initialSupply = 1000n;
     const CashTokenFactory = await hre.ethers.getContractFactory("CashToken");
     const cashToken = await CashTokenFactory.connect(owner).deploy(
       "Cash Token",
       "CASH",
-      18,
+      0,
       initialSupply
     );
-    
-    return { entryPoint, smartAccount, cashToken, owner, otherAccount, initialSupply };
+
+    return { entryPoint, entity1SmartAccount, entity2SmartAccount, entity3SmartAccount, cashToken, entity1, entity2, entity3, owner, otherAccount, initialSupply };
   }
 
   describe("Deployment", function () {
     it("Should set the right owner for SmartAccount", async function () {
-      const { smartAccount, owner } = await loadFixture(deployFixture);
-      expect(await smartAccount.owner()).to.equal(owner.address);
+      const { entity1SmartAccount, entity1 } = await loadFixture(deployFixture);
+      expect(await entity1SmartAccount.owner()).to.equal(entity1.address);
     });
 
     it("Should set the right EntryPoint", async function () {
-      const { smartAccount, entryPoint } = await loadFixture(deployFixture);
-      expect(await smartAccount.getEntryPoint()).to.equal(entryPoint);
+      const { entity1SmartAccount, entryPoint } = await loadFixture(deployFixture);
+      expect(await entity1SmartAccount.getEntryPoint()).to.equal(entryPoint);
     });
 
     it("Should have the correct initial supply for CashToken", async function () {
       const { cashToken, owner, initialSupply } = await loadFixture(deployFixture);
-      expect(await cashToken.balanceOf(owner.address)).to.equal(initialSupply * (10n ** 18n));
+      expect(await cashToken.balanceOf(owner.address)).to.equal(initialSupply);
     });
 
   });
 
-  describe("Execute", function () {
-    it("Should allow owner to execute a CashToken transfer directly", async function () {
-      const { smartAccount, cashToken, owner, otherAccount } = await loadFixture(deployFixture);
 
-      // Transfer tokens to smart account
-      const transferAmount = 100n * (10n ** 18n);
-      await cashToken.connect(owner).transfer(smartAccount, transferAmount);
-      
-      // Verify smart account received tokens
-      expect(await cashToken.balanceOf(smartAccount)).to.equal(transferAmount);
-      
-      // Encode the function call to transfer tokens from smart account to another account
-      const transferCallData = cashToken.interface.encodeFunctionData("transfer", [
-        otherAccount.address,
-        1n * (10n ** 18n)
+
+  describe("Execute", async function () {
+    let entity1SmartAccount:any, entity2SmartAccount:any, entity1:any, entity2:any, cashToken:any, owner:any, otherAccount:any;
+     before(async function () {
+       const fixture = await loadFixture(deployFixture);
+        entity1SmartAccount = fixture.entity1SmartAccount; 
+        entity2SmartAccount = fixture.entity2SmartAccount;
+        entity1 = fixture.entity1;
+        entity2 = fixture.entity2;
+        cashToken = fixture.cashToken;
+        owner = fixture.owner;
+        otherAccount = fixture.otherAccount;
+
+        });
+
+
+    it("Should allow entity1 to approve cashToken transfer", async function () {
+
+      await cashToken.connect(owner).mint(entity1SmartAccount, 100n);
+      expect(await cashToken.balanceOf(entity1SmartAccount.target)).to.equal(100n);
+      const approveCallData = cashToken.interface.encodeFunctionData("approve", [
+        entity2SmartAccount.target,
+        50n
       ]);
 
-      // Execute the transfer through the smart account
-      await smartAccount.connect(owner).execute(
-        cashToken,
+      // Execute the approve through the smart account
+      const tx = await entity1SmartAccount.connect(entity1).execute(
+        cashToken.target,
         0, // No value sent
-        transferCallData
+        approveCallData
       );
 
+      const balance =await cashToken.balanceOf(entity1SmartAccount.target)
       // Verify the transfer was successful
-      expect(await cashToken.balanceOf(otherAccount.address)).to.equal(1n * (10n ** 18n));
-      expect(await cashToken.balanceOf(smartAccount.target)).to.equal(99n * (10n ** 18n));
+      expect(await cashToken.allowance(entity1SmartAccount.target, entity2SmartAccount.target)).to.equal(50n);
+      expect(await cashToken.balanceOf(entity1SmartAccount.target)).to.equal(100n);
     });
 
-    it("Should revert when non-owner tries to execute a transaction directly", async function () {
-      const { smartAccount, cashToken, otherAccount } = await loadFixture(deployFixture);
+    it("Should allow entity2 to get the tokens from entity1", async function () {
+
 
       // Encode the function call to transfer tokens
-      const transferCallData = cashToken.interface.encodeFunctionData("transfer", [
-        otherAccount.address,
-        50n * (10n ** 18n)
+      const transferFromCallData = cashToken.interface.encodeFunctionData("transferFrom", [
+        entity1SmartAccount.target,
+        entity2SmartAccount.target,
+        50n
       ]);
 
-      // Try to execute the transfer through the smart account with a non-owner
-      await expect(
-        smartAccount.connect(otherAccount).execute(
-          cashToken,
-          0, // No value sent
-          transferCallData
-        )
-      ).to.be.revertedWithCustomError(smartAccount, "SmartAccount__NotFromEntryPointOrOwner");
+            // Execute the transfer through the smart account
+      await entity2SmartAccount.connect(entity2).execute(
+        cashToken.target,
+        0, // No value sent
+        transferFromCallData
+      );
+
+      expect(await cashToken.balanceOf(entity2SmartAccount.target)).to.equal(50n);
+      expect(await cashToken.balanceOf(entity1SmartAccount.target)).to.equal(50n);
+
     });
   });
 
@@ -107,7 +116,7 @@ describe("SmartAccount with CashToken", function () {
   //     const { entryPoint, smartAccount, cashToken, owner, otherAccount } = await loadFixture(deployFixture);
 
   //     // Transfer tokens to smart account
-  //     const transferAmount = 100n * (10n ** 18n);
+  //     const transferAmount = 100n;
   //     await cashToken.connect(owner).transfer(smartAccount, transferAmount);
       
   //     // Verify smart account received tokens
@@ -116,7 +125,7 @@ describe("SmartAccount with CashToken", function () {
   //     // Encode the function call to transfer tokens from smart account to another account
   //     const transferCallData = cashToken.interface.encodeFunctionData("transfer", [
   //       otherAccount.address,
-  //       50n * (10n ** 18n)
+  //       50n
   //     ]);
 
   //     // Encode the execute function call for the smart account
@@ -169,8 +178,8 @@ describe("SmartAccount with CashToken", function () {
   //     await entryPoint.handleOps([packedUserOp], beneficiary);
 
   //     // Verify the transfer was successful
-  //     expect(await cashToken.balanceOf(otherAccount.address)).to.equal(50n * (10n ** 18n));
-  //     expect(await cashToken.balanceOf(smartAccount)).to.equal(50n * (10n ** 18n));
+  //     expect(await cashToken.balanceOf(otherAccount.address)).to.equal(50n);
+  //     expect(await cashToken.balanceOf(smartAccount)).to.equal(50n);
   //   });
   // });
 });
