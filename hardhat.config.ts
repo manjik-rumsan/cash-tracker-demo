@@ -1,8 +1,6 @@
 import { HardhatUserConfig, vars } from 'hardhat/config';
 import "@nomicfoundation/hardhat-toolbox";
-import "@nomicfoundation/hardhat-verify";
 const DEPLOYER_KEY: string = vars.get('DEPLOYER_KEY');
-const ETHERSCAN_API_KEY:string= vars.get('ETHERSCAN_API_KEY') || '
 
 
 const config: HardhatUserConfig = {
@@ -25,15 +23,7 @@ const config: HardhatUserConfig = {
       accounts: [DEPLOYER_KEY || ""],
     }
   },
-  etherscan: {
-    // Your API key for Etherscan
-    // Obtain one at https://etherscan.io/
-    apiKey: ETHERSCAN_API_KEY || "",
-  },
-  sourcify: {
 
-    enabled: true
-  }
 };
 
 export default config;

@@ -8,16 +8,28 @@ describe("CashTracker with SmartAccount", function () {
     // Deploy EntryPoint
     const EntryPointFactory = await hre.ethers.getContractFactory("EntryPoint");
     const entryPoint = await EntryPointFactory.deploy();
-    
+    const senderCreator = await entryPoint.senderCreator();
+    console.log("EntryPoint Address:", entryPoint.target);
+    console.log("senderCreator:", senderCreator);
     // Get signers
     const [owner,entity1,entity2,entity3, otherAccount] = await hre.ethers.getSigners();
-
+    console.log("Owner Address:", owner.address);
+    console.log("Entity1 Address:", entity1.address);
+    console.log("Entity2 Address:", entity2.address);
+    console.log("Entity3 Address:", entity3.address);
     // Deploy SmartAccount
-    const SmartAccountFactory = await hre.ethers.getContractFactory("SmartAccount");
-    const entity1SmartAccount = await SmartAccountFactory.connect(entity1).deploy(entryPoint.target);
-    const entity2SmartAccount = await SmartAccountFactory.connect(entity2).deploy(entryPoint.target);
-    const entity3SmartAccount = await SmartAccountFactory.connect(entity3).deploy(entryPoint.target);
+    // const SmartAccountFactory = await hre.ethers.deployContract("SmartAccountFactory", [entryPoint.target]);
+    const SmartAccountFactory  = await hre.ethers.getContractFactory("SmartAccount");
+    console.log('SmartAccountFactory Address:', SmartAccountFactory.target);
+    // Create Smart Accounts for entities
 
+    const entity1SmartAccountAddress = await SmartAccountFactory.connect(entity1).deploy(entryPoint.target);
+    const entity2SmartAccountAddress = await SmartAccountFactory.connect(entity2).deploy(entryPoint.target);
+    const entity3SmartAccountAddress = await SmartAccountFactory.connect(entity3).deploy(entryPoint.target);
+
+    const entity1SmartAccount = await hre.ethers.getContractAt("SmartAccount", entity1SmartAccountAddress);
+    const entity2SmartAccount = await hre.ethers.getContractAt("SmartAccount", entity2SmartAccountAddress);
+    const entity3SmartAccount = await hre.ethers.getContractAt("SmartAccount", entity3SmartAccountAddress);
     // Deploy CashToken
     const initialSupply = 1000n;
     const CashTokenFactory = await hre.ethers.getContractFactory("CashToken");
