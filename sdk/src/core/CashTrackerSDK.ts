@@ -5,8 +5,6 @@ import {
   TokenBalance,
   TokenAllowance,
   TransactionResult,
-  TrackingOptions,
-  TrackingSession,
   ValidationResult,
   SDKErrorCode,
 } from "../types";
@@ -16,35 +14,60 @@ import { ValidationUtils } from "../utils/ValidationUtils";
 // Manager imports
 import { EntityManager } from "../entities/EntityManager";
 import { OperationsManager } from "../operations/OperationsManager";
-import { TrackingManager } from "../tracking/TrackingManager";
 import { EventManager } from "../tracking/EventManager";
 
 /**
  * Main Cash Tracker SDK class
- * Orchestrates all components for cash tracking operations
+ * Each instance represents a single entity with its own smart account
  */
 export class CashTrackerSDK {
   private config: SDKConfig | null = null;
   private provider: ethers.Provider | null = null;
   private cashTokenContract: ethers.Contract | null = null;
+  private wallet: ethers.Wallet | null = null;
+  private smartAccountContract: ethers.Contract | null = null;
   private isInitialized = false;
+  private entityAddress: string | null = null;
+  private smartAccountAddress: string | null = null;
 
   // Managers
   public readonly configManager: ConfigManager;
   public readonly entities: EntityManager;
   public readonly operations: OperationsManager;
-  public readonly tracking: TrackingManager;
   public readonly events: EventManager;
 
   constructor(config?: SDKConfig) {
     this.configManager = new ConfigManager();
     this.entities = new EntityManager();
     this.operations = new OperationsManager();
-    this.tracking = new TrackingManager();
     this.events = new EventManager();
 
     if (config) {
       this.initializeWithConfig(config);
+    }
+  }
+
+  /**
+   * Connect wallet to the SDK
+   * @param walletOrPrivateKey - Wallet instance or private key string
+   */
+  connect(walletOrPrivateKey: ethers.Wallet | string): void {
+    if (typeof walletOrPrivateKey === "string") {
+      this.wallet = new ethers.Wallet(walletOrPrivateKey, this.provider);
+    } else {
+      this.wallet = walletOrPrivateKey;
+    }
+
+    this.entityAddress = this.wallet.address;
+
+    // Set up smart account contract if smart account address is configured
+    if (this.config?.contracts.entitySmartAccount && this.wallet) {
+      this.smartAccountAddress = this.config.contracts.entitySmartAccount;
+      this.smartAccountContract = new ethers.Contract(
+        this.smartAccountAddress,
+        this.getSmartAccountABI(),
+        this.wallet
+      );
     }
   }
 
@@ -66,49 +89,29 @@ export class CashTrackerSDK {
         );
       }
 
-      // Apply environment overrides if provided
-      if (this.config.environment) {
-        this.config.network.rpcUrl =
-          this.config.environment.networkRpcUrl || this.config.network.rpcUrl;
-        this.config.network.entryPoint =
-          this.config.environment.entryPoint || this.config.network.entryPoint;
-        this.config.contracts.cashToken =
-          this.config.environment.cashTokenAddress ||
-          this.config.contracts.cashToken;
-
-        if (this.config.options && this.config.environment) {
-          this.config.options.gasLimit =
-            this.config.environment.gasLimit || this.config.options.gasLimit;
-          this.config.options.retryAttempts =
-            this.config.environment.retryAttempts ||
-            this.config.options.retryAttempts;
-          this.config.options.timeout =
-            this.config.environment.timeout || this.config.options.timeout;
-        }
-      }
-
       // Setup provider
       this.provider = new ethers.JsonRpcProvider(this.config!.network.rpcUrl);
 
-      // Setup CashToken contract
+      // Setup CashToken contract with custom ABI if provided
+      const abi = this.config!.contracts.cashtokenAbi || this.getCashTokenABI();
       this.cashTokenContract = new ethers.Contract(
         this.config!.contracts.cashToken,
-        this.getCashTokenABI(),
+        abi,
         this.provider
       );
 
-      // Initialize managers with full configuration
+      // Auto-connect wallet if defaultPrivatekey is provided
+      if (this.config!.contracts.defaultPrivatekey) {
+        this.connect(this.config!.contracts.defaultPrivatekey);
+      }
+
+      // Initialize managers
       await this.entities.initialize(this.provider, this.config!);
       await this.operations.initialize(
         this.provider,
         this.cashTokenContract,
         this.config!,
         this
-      );
-      await this.tracking.initialize(
-        this.provider,
-        this.cashTokenContract,
-        this.config!
       );
 
       this.isInitialized = true;
@@ -118,7 +121,6 @@ export class CashTrackerSDK {
         id: this.generateEventId(),
         type: "sdk_initialized",
         timestamp: Date.now(),
-        data: { config: this.config },
       });
     } catch (error) {
       throw SDKError.fromError(error as Error, SDKErrorCode.INVALID_CONFIG);
@@ -131,6 +133,108 @@ export class CashTrackerSDK {
   private async initializeWithConfig(config: SDKConfig): Promise<void> {
     this.config = config;
     await this.initialize();
+  }
+
+  /**
+   * Get cash allowance approved to me by another address
+   * @param ownerAddress - Address that approved the allowance
+   */
+  async getCashApprovedToMe(ownerAddress: string): Promise<TokenAllowance> {
+    if (!this.isReady()) {
+      throw SDKError.configError("SDK not initialized");
+    }
+
+    if (!this.smartAccountAddress) {
+      throw SDKError.configError("Smart account address not set");
+    }
+
+    try {
+      const allowance = await this.cashTokenContract!.allowance(
+        ownerAddress,
+        this.smartAccountAddress
+      );
+      const decimals = await this.cashTokenContract!.decimals();
+
+      return {
+        ownerId: ownerAddress,
+        spenderId: this.smartAccountAddress,
+        allowance,
+        formatted: ethers.formatUnits(allowance, decimals),
+      };
+    } catch (error) {
+      throw SDKError.networkError(
+        `Failed to get allowance from ${ownerAddress} to ${this.smartAccountAddress}`,
+        { error }
+      );
+    }
+  }
+
+  /**
+   * Get cash allowance I approved to another address
+   * @param spenderAddress - Address I approved for spending
+   */
+  async getCashApprovedByMe(spenderAddress: string): Promise<TokenAllowance> {
+    if (!this.isReady()) {
+      throw SDKError.configError("SDK not initialized");
+    }
+
+    if (!this.smartAccountAddress) {
+      throw SDKError.configError("Smart account address not set");
+    }
+
+    try {
+      const allowance = await this.cashTokenContract!.allowance(
+        this.smartAccountAddress,
+        spenderAddress
+      );
+      const decimals = await this.cashTokenContract!.decimals();
+
+      return {
+        ownerId: this.smartAccountAddress,
+        spenderId: spenderAddress,
+        allowance,
+        formatted: ethers.formatUnits(allowance, decimals),
+      };
+    } catch (error) {
+      throw SDKError.networkError(
+        `Failed to get allowance from ${this.smartAccountAddress} to ${spenderAddress}`,
+        { error }
+      );
+    }
+  }
+
+  /**
+   * Get current entity's cash balance
+   */
+  async getCashBalance(): Promise<TokenBalance> {
+    if (!this.isReady()) {
+      throw SDKError.configError("SDK not initialized");
+    }
+
+    if (!this.smartAccountAddress) {
+      throw SDKError.configError("Smart account address not set");
+    }
+
+    try {
+      const balance = await this.cashTokenContract!.balanceOf(
+        this.smartAccountAddress
+      );
+      const decimals = await this.cashTokenContract!.decimals();
+      const symbol = await this.cashTokenContract!.symbol();
+
+      return {
+        entityId: this.smartAccountAddress,
+        balance,
+        formatted: ethers.formatUnits(balance, decimals),
+        decimals,
+        symbol,
+      };
+    } catch (error) {
+      throw SDKError.networkError(
+        `Failed to get balance for smart account ${this.smartAccountAddress}`,
+        { error }
+      );
+    }
   }
 
   /**
@@ -166,235 +270,41 @@ export class CashTrackerSDK {
   }
 
   /**
-   * Deploy smart accounts for multiple entities
-   * Based on the pattern from 0.setup-smart-account.ts
+   * Get current entity address
    */
-  async deploySmartAccounts(privateKeys: string[]): Promise<Entity[]> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    const entities: Entity[] = [];
-
-    for (let i = 0; i < privateKeys.length; i++) {
-      const privateKey = privateKeys[i];
-
-      // Validate private key
-      if (!ValidationUtils.validatePrivateKey(privateKey)) {
-        throw SDKError.validationError(`Invalid private key at index ${i}`);
-      }
-
-      try {
-        const entity = await this.entities.deploySmartAccount(privateKey);
-        entities.push(entity);
-
-        // Emit entity created event
-        this.events.emit({
-          id: this.generateEventId(),
-          type: "entity_created",
-          timestamp: Date.now(),
-          entityId: entity.id,
-          data: {
-            address: entity.address,
-            smartAccount: entity.smartAccount,
-          },
-        });
-      } catch (error) {
-        throw SDKError.transactionFailed(
-          `Failed to deploy smart account for private key ${i + 1}`,
-          { privateKey: privateKey.substring(0, 10) + "...", error }
-        );
-      }
-    }
-
-    return entities;
+  get address(): string | null {
+    return this.entityAddress;
   }
 
   /**
-   * Load entities from demo format
-   * Based on the pattern from the demo scripts
+   * Get current smart account address
    */
-  async loadEntitiesFromDemo(filePath: string): Promise<Entity[]> {
-    const config = await this.configManager.loadEntitiesFromDemoFormat(
-      filePath
-    );
-    await this.initialize(config);
-
-    return this.entities.loadFromConfig(config);
-  }
-
-  /**
-   * Get balance for an entity
-   * Based on the pattern from 1.run-account.ts
-   */
-  async getBalance(entityId: string): Promise<TokenBalance> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    const entity = this.entities.getEntity(entityId);
-    if (!entity) {
-      throw SDKError.entityNotFound(entityId);
-    }
-
-    return this.operations.getBalance(entityId);
-  }
-
-  /**
-   * Get balances for all entities
-   */
-  async getAllBalances(): Promise<TokenBalance[]> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    const entities = this.entities.getAllEntities();
-    const balances: TokenBalance[] = [];
-
-    for (const entity of entities) {
-      try {
-        const balance = await this.operations.getBalance(entity.id);
-        balances.push(balance);
-      } catch (error) {
-        console.warn(`Failed to get balance for entity ${entity.id}:`, error);
-      }
-    }
-
-    return balances;
-  }
-
-  /**
-   * Approve tokens for spending
-   * Based on the pattern from 1.run-account.ts
-   */
-  async approveTokens(
-    ownerId: string,
-    spenderId: string,
-    amount: bigint
-  ): Promise<TransactionResult> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    return this.operations.approveTokens(ownerId, spenderId, amount);
-  }
-
-  /**
-   * Get allowance between entities
-   */
-  async getAllowance(
-    ownerId: string,
-    spenderId: string
-  ): Promise<TokenAllowance> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    return this.operations.getAllowance(ownerId, spenderId);
-  }
-
-  /**
-   * Transfer tokens using transferFrom
-   * Based on the pattern from 1.run-account.ts
-   */
-  async transferFrom(
-    spenderId: string,
-    fromId: string,
-    toId: string,
-    amount: bigint
-  ): Promise<TransactionResult> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    return this.operations.transferFrom(spenderId, fromId, toId, amount);
-  }
-
-  /**
-   * Start real-time tracking
-   * Based on the pattern from tracker.ts
-   */
-  async startTracking(options: TrackingOptions): Promise<TrackingSession> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    return this.tracking.startTracking(options);
-  }
-
-  /**
-   * Get current tracking state
-   */
-  async getTrackingState(): Promise<any> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    return this.tracking.getCurrentState();
-  }
-
-  /**
-   * Switch active entity
-   */
-  async switchEntity(entityId: string): Promise<void> {
-    if (!this.isReady()) {
-      throw SDKError.configError("SDK not initialized");
-    }
-
-    const entity = this.entities.getEntity(entityId);
-    if (!entity) {
-      throw SDKError.entityNotFound(entityId);
-    }
-
-    await this.entities.switchActiveEntity(entityId);
-
-    // Emit entity switched event
-    this.events.emit({
-      id: this.generateEventId(),
-      type: "entity_switched",
-      timestamp: Date.now(),
-      entityId,
-      data: {
-        address: entity.address,
-        smartAccount: entity.smartAccount,
-      },
-    });
-  }
-
-  /**
-   * Get active entity
-   */
-  getActiveEntity(): Entity | null {
-    return this.entities.getActiveEntity();
-  }
-
-  /**
-   * Validate current configuration
-   */
-  validateConfig(): ValidationResult {
-    return this.configManager.validateConfig();
-  }
-
-  /**
-   * Subscribe to SDK events
-   */
-  on(eventType: string, callback: Function): string {
-    return this.events.subscribe(eventType, callback);
-  }
-
-  /**
-   * Unsubscribe from SDK events
-   */
-  off(subscriptionId: string): boolean {
-    return this.events.unsubscribe(subscriptionId);
+  get smartAccount(): string | null {
+    return this.smartAccountAddress;
   }
 
   /**
    * Get CashToken ABI
    */
   private getCashTokenABI(): any {
-    // This would typically be loaded from artifacts
-    // For now, returning a minimal ABI based on the demo
+    // Try to load from artifacts directory first
+    try {
+      const path = require("path");
+      const fs = require("fs");
+
+      const artifactPath = path.join(
+        __dirname,
+        "../artifacts/CashTokenAbi.json"
+      );
+      if (fs.existsSync(artifactPath)) {
+        const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
+        return artifact;
+      }
+    } catch (error) {
+      console.warn("Could not load CashTokenAbi.json, using fallback ABI");
+    }
+
+    // Fallback to minimal ABI
     return [
       "function balanceOf(address account) view returns (uint256)",
       "function allowance(address owner, address spender) view returns (uint256)",
@@ -411,6 +321,254 @@ export class CashTrackerSDK {
   }
 
   /**
+   * Get Smart Account ABI
+   */
+  private getSmartAccountABI(): any {
+    // Try to load from artifacts directory first
+    try {
+      const path = require("path");
+      const fs = require("fs");
+
+      const artifactPath = path.join(
+        __dirname,
+        "../artifacts/SmartAccountAbi.json"
+      );
+      if (fs.existsSync(artifactPath)) {
+        const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
+        return artifact;
+      }
+    } catch (error) {
+      console.warn("Could not load SmartAccountAbi.json, using fallback ABI");
+    }
+
+    // Fallback to minimal ABI
+    return [
+      "function execute(address dest, uint256 value, bytes calldata functionData) external",
+      "function getEntryPoint() external view returns (address)",
+      "function owner() external view returns (address)",
+    ];
+  }
+
+  /**
+   * Parse units with proper decimal handling
+   */
+  private parseUnits(amount: string | number, decimals: number): bigint {
+    if (typeof amount === "string") {
+      return ethers.parseUnits(amount, decimals);
+    }
+    // If amount is a number, assume it's already in the smallest unit
+    return BigInt(amount);
+  }
+
+  /**
+   * Format units with proper decimal handling
+   */
+  private formatUnits(amount: bigint, decimals: number): string {
+    return ethers.formatUnits(amount, decimals);
+  }
+
+  /**
+   * Check if entity has sufficient balance for approval
+   */
+  private async checkBalanceForApproval(amount: bigint): Promise<void> {
+    if (!this.smartAccountAddress) {
+      throw SDKError.configError("Smart account address not set");
+    }
+
+    const balance = await this.cashTokenContract!.balanceOf(
+      this.smartAccountAddress
+    );
+
+    if (balance < amount) {
+      const decimals = await this.cashTokenContract!.decimals();
+      const symbol = await this.cashTokenContract!.symbol();
+
+      throw SDKError.validationError(
+        `Insufficient balance for approval. Required: ${this.formatUnits(
+          amount,
+          decimals
+        )} ${symbol}, Available: ${this.formatUnits(
+          balance,
+          decimals
+        )} ${symbol}`
+      );
+    }
+  }
+
+  /**
+   * Give cash allowance to another address
+   * @param spenderAddress - Address to approve for spending
+   * @param amount - Amount to approve (can be string or number)
+   */
+  async giveCashAllowance(
+    spenderAddress: string,
+    amount: string | number | bigint
+  ): Promise<TransactionResult> {
+    if (!this.isReady()) {
+      throw SDKError.configError("SDK not initialized");
+    }
+
+    if (!this.wallet || !this.smartAccountContract) {
+      throw SDKError.configError(
+        "Wallet not connected or smart account not configured"
+      );
+    }
+
+    try {
+      // Get decimals for proper parsing
+      const decimals = await this.cashTokenContract!.decimals();
+      const symbol = await this.cashTokenContract!.symbol();
+
+      // Parse amount to bigint
+      let amountBigInt: bigint;
+      if (typeof amount === "bigint") {
+        amountBigInt = amount;
+      } else {
+        amountBigInt = this.parseUnits(amount.toString(), decimals);
+      }
+
+      // Check if entity has sufficient balance for approval
+      await this.checkBalanceForApproval(amountBigInt);
+
+      console.log(
+        `Approving ${this.formatUnits(
+          amountBigInt,
+          decimals
+        )} ${symbol} for: ${spenderAddress}`
+      );
+
+      // Encode approval data
+      const approveData = this.cashTokenContract!.interface.encodeFunctionData(
+        "approve",
+        [spenderAddress, amountBigInt]
+      );
+
+      // Execute through smart account
+      const approveTx = await this.smartAccountContract.execute(
+        this.cashTokenContract!.target,
+        0,
+        approveData
+      );
+
+      const receipt = await approveTx.wait();
+
+      return {
+        hash: approveTx.hash,
+        status: "confirmed",
+        receipt,
+        gasUsed: receipt?.gasUsed,
+        gasPrice: receipt?.gasPrice,
+      };
+    } catch (error) {
+      throw SDKError.transactionFailed(
+        `Failed to approve tokens for ${spenderAddress}`,
+        { error }
+      );
+    }
+  }
+
+  /**
+   * Get cash from another address (transferFrom)
+   * @param fromAddress - Address to transfer from
+   * @param amount - Amount to transfer (can be string, number, or bigint, optional - will use full allowance if not specified)
+   */
+  async getCashFrom(
+    fromAddress: string,
+    amount?: string | number | bigint
+  ): Promise<TransactionResult> {
+    if (!this.isReady()) {
+      throw SDKError.configError("SDK not initialized");
+    }
+
+    if (!this.wallet || !this.smartAccountContract) {
+      throw SDKError.configError(
+        "Wallet not connected or smart account not configured"
+      );
+    }
+
+    if (!this.smartAccountAddress) {
+      throw SDKError.configError("Smart account address not set");
+    }
+
+    try {
+      const decimals = await this.cashTokenContract!.decimals();
+      const symbol = await this.cashTokenContract!.symbol();
+
+      // If amount not specified, use full allowance
+      let amountBigInt: bigint;
+      if (!amount) {
+        const allowance = await this.cashTokenContract!.allowance(
+          fromAddress,
+          this.smartAccountAddress
+        );
+        amountBigInt = allowance;
+      } else {
+        // Parse amount to bigint
+        if (typeof amount === "bigint") {
+          amountBigInt = amount;
+        } else {
+          amountBigInt = this.parseUnits(amount.toString(), decimals);
+        }
+      }
+
+      // Check if there's sufficient allowance
+      const allowance = await this.cashTokenContract!.allowance(
+        fromAddress,
+        this.smartAccountAddress
+      );
+
+      if (allowance < amountBigInt) {
+        throw SDKError.validationError(
+          `Insufficient allowance. Required: ${this.formatUnits(
+            amountBigInt,
+            decimals
+          )} ${symbol}, Available: ${this.formatUnits(
+            allowance,
+            decimals
+          )} ${symbol}`
+        );
+      }
+
+      console.log(
+        `Transferring ${this.formatUnits(
+          amountBigInt,
+          decimals
+        )} ${symbol} from ${fromAddress} to ${this.smartAccountAddress}`
+      );
+
+      // Encode transferFrom data
+      const transferFromData =
+        this.cashTokenContract!.interface.encodeFunctionData("transferFrom", [
+          fromAddress,
+          this.smartAccountAddress,
+          amountBigInt,
+        ]);
+
+      // Execute through smart account
+      const transferTx = await this.smartAccountContract.execute(
+        this.cashTokenContract!.target,
+        0,
+        transferFromData
+      );
+
+      const receipt = await transferTx.wait();
+
+      return {
+        hash: transferTx.hash,
+        status: "confirmed",
+        receipt,
+        gasUsed: receipt?.gasUsed,
+        gasPrice: receipt?.gasPrice,
+      };
+    } catch (error) {
+      throw SDKError.transactionFailed(
+        `Failed to transfer tokens from ${fromAddress}`,
+        { error }
+      );
+    }
+  }
+
+  /**
    * Generate unique event ID
    */
   private generateEventId(): string {
@@ -424,11 +582,44 @@ export class CashTrackerSDK {
     this.isInitialized = false;
     this.provider = null;
     this.cashTokenContract = null;
+    this.wallet = null;
+    this.smartAccountContract = null;
+    this.entityAddress = null;
+    this.smartAccountAddress = null;
 
     // Stop tracking sessions
-    await this.tracking.stopAllSessions();
+    // await this.tracking.stopAllSessions(); // This line is removed
 
     // Clear event subscriptions
     this.events.clearSubscriptions();
+  }
+
+  // Legacy methods for backward compatibility
+  async getBalance(entityId: string): Promise<TokenBalance> {
+    return this.getCashBalance();
+  }
+
+  async approveTokens(
+    ownerId: string,
+    spenderId: string,
+    amount: bigint
+  ): Promise<TransactionResult> {
+    return this.giveCashAllowance(spenderId, amount);
+  }
+
+  async getAllowance(
+    ownerId: string,
+    spenderId: string
+  ): Promise<TokenAllowance> {
+    return this.getCashApprovedByMe(spenderId);
+  }
+
+  async transferFrom(
+    spenderId: string,
+    fromId: string,
+    toId: string,
+    amount: bigint
+  ): Promise<TransactionResult> {
+    return this.getCashFrom(fromId, amount);
   }
 }

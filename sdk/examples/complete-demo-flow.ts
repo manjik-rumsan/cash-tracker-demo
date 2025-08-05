@@ -1,405 +1,306 @@
+import * as dotenv from "dotenv";
 import { CashTrackerSDK } from "../src/core/CashTrackerSDK";
 import { ethers } from "ethers";
-import { getEntityIds } from "../src/utils/helpers";
+import * as fs from "fs";
+import * as path from "path";
 
-/**
- * Complete Demo Flow Example
- * Replicates all functionality from the demo scripts:
- * - 0.setup-smart-account.ts
- * - 1.run-account.ts
- * - tracker.ts
- */
+// Load environment variables
+dotenv.config();
 
-async function completeDemoFlow() {
-  console.log("🚀 Starting Complete Demo Flow Example\n");
+// Load config from config/entities.json
+const loadConfig = () => {
+  const configPath = path.join(__dirname, "../config/entities.json");
+  const configData = fs.readFileSync(configPath, "utf8");
+  return JSON.parse(configData);
+};
+
+export async function completeDemoFlow(): Promise<void> {
+  console.log("🚀 Starting Complete Cash Tracker SDK Demo Flow\n");
 
   try {
-    // Step 1: Initialize SDK with full configuration
-    const sdk = new CashTrackerSDK({
+    // Load configuration from config/entities.json
+    const config = loadConfig();
+    const entities = config.entities;
+
+    if (entities.length < 2) {
+      throw new Error("Need at least 2 entities in config for this example");
+    }
+
+    // Step 1: Initialize Entity 1 (Company A)
+    console.log("📋 Step 1: Initializing Entity 1 (Company A)...");
+    const companyA = new CashTrackerSDK({
       network: {
-        rpcUrl: process.env.NETWORK_RPC_URL || "https://sepolia.base.org",
-        entryPoint:
-          process.env.ENTRY_POINT ||
-          "0x1e2717BC0dcE0a6632fe1B057e948ec3EF50E38b",
+        rpcUrl: config.network,
+        entryPoint: config.entryPoint,
       },
       contracts: {
-        cashToken:
-          process.env.CASH_TOKEN ||
-          "0xc3E3282048cB2F67b8e08447e95c37f181E00133",
-      },
-      options: {
-        gasLimit: process.env.GAS_LIMIT
-          ? parseInt(process.env.GAS_LIMIT)
-          : 500000,
-        retryAttempts: process.env.RETRY_ATTEMPTS
-          ? parseInt(process.env.RETRY_ATTEMPTS)
-          : 3,
-        timeout: process.env.TIMEOUT ? parseInt(process.env.TIMEOUT) : 30000,
-      },
-      paths: {
-        entitiesConfig:
-          process.env.ENTITIES_CONFIG_PATH ||
-          "../scripts/demo/config/entities.json",
-        smartAccountArtifact: process.env.SMART_ACCOUNT_ARTIFACT_PATH,
-        cashTokenArtifact: process.env.CASH_TOKEN_ARTIFACT_PATH,
-        logs: process.env.LOGS_PATH || "./logs",
-      },
-      environment: {
-        networkRpcUrl: process.env.NETWORK_RPC_URL,
-        entryPoint: process.env.ENTRY_POINT,
-        cashTokenAddress: process.env.CASH_TOKEN,
-        gasLimit: process.env.GAS_LIMIT
-          ? parseInt(process.env.GAS_LIMIT)
-          : undefined,
-        retryAttempts: process.env.RETRY_ATTEMPTS
-          ? parseInt(process.env.RETRY_ATTEMPTS)
-          : undefined,
-        timeout: process.env.TIMEOUT
-          ? parseInt(process.env.TIMEOUT)
-          : undefined,
+        cashToken: process.env.CASH_TOKEN!,
+        smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
+        cashtokenAbi: require("../src/artifacts/CashTokenAbi.json"),
+        entitySmartAccount: entities[0].smartAccount,
+        defaultPrivatekey: entities[0].privateKey,
       },
     });
 
-    await sdk.initialize();
-    console.log("✅ SDK initialized successfully");
+    // Step 2: Initialize Entity 2 (Company B)
+    console.log("📋 Step 2: Initializing Entity 2 (Company B)...");
+    const companyB = new CashTrackerSDK({
+      network: {
+        rpcUrl: config.network,
+        entryPoint: config.entryPoint,
+      },
+      contracts: {
+        cashToken: process.env.CASH_TOKEN!,
+        smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
+        cashtokenAbi: require("../src/artifacts/CashTokenAbi.json"),
+        entitySmartAccount: entities[1].smartAccount,
+        defaultPrivatekey: entities[1].privateKey,
+      },
+    });
 
-    // Step 2: Load Existing Smart Accounts (0.setup-smart-account.ts)
-    console.log("\n📦 Step 1: Loading Existing Smart Accounts");
-    console.log("=".repeat(50));
+    // Step 3: Initialize both entities
+    console.log("📋 Step 3: Initializing both entities...");
+    await companyA.initialize();
+    await companyB.initialize();
 
-    // Load entities from existing demo configuration
-    const entities = await sdk.loadEntitiesFromDemo(
-      "../scripts/demo/config/entities.json"
+    console.log("✅ Both entities initialized successfully");
+    console.log(`Company A address: ${companyA.address}`);
+    console.log(`Company B address: ${companyB.address}`);
+
+    // Step 4: Check initial balances
+    console.log("\n📋 Step 4: Checking initial balances...");
+    const companyABalance = await companyA.getCashBalance();
+    const companyBBalance = await companyB.getCashBalance();
+
+    console.log(
+      `Company A initial balance: ${companyABalance.formatted} ${companyABalance.symbol}`
     );
-    console.log(`✅ Successfully loaded ${entities.length} Smart Accounts`);
+    console.log(
+      `Company B initial balance: ${companyBBalance.formatted} ${companyBBalance.symbol}`
+    );
 
-    // Step 3: Interactive Operations (1.run-account.ts)
-    console.log("\n🎮 Step 2: Interactive Operations");
-    console.log("=".repeat(50));
+    // Step 5: Company B gives allowance to Company A (correct direction for transferFrom)
+    console.log("\n📋 Step 5: Company B gives allowance to Company A...");
+    // Use string amount - SDK will handle parsing internally
+    const allowanceAmount = "0.5"; // 0.5 tokens (adjusted for available balance)
 
-    // Simulate the interactive menu from 1.run-account.ts
-    const operations = [
-      {
-        name: "Check Balance",
-        action: async () => {
-          console.log("\n💰 Checking balances...");
-          const balances = await sdk.getAllBalances();
-          for (const balance of balances) {
-            console.log(
-              `Entity ${balance.entityId}: ${balance.formatted} ${balance.symbol}`
-            );
-          }
-        },
-      },
-      {
-        name: "Approve Tokens",
-        action: async () => {
-          console.log("\n✅ Approving tokens...");
-          const approveAmount = ethers.parseEther("100");
-          const entityIds = getEntityIds(entities.length);
-          const result = await sdk.approveTokens(
-            entityIds[0],
-            entityIds[1],
-            approveAmount
-          );
-          console.log(`✅ Approval transaction: ${result.hash}`);
-        },
-      },
-      {
-        name: "Check Allowance",
-        action: async () => {
-          console.log("\n🔍 Checking allowance...");
-          const entityIds = getEntityIds(entities.length);
-          const allowance = await sdk.getAllowance(entityIds[0], entityIds[1]);
-          console.log(`Allowance: ${allowance.formatted}`);
-        },
-      },
-      {
-        name: "Transfer Tokens",
-        action: async () => {
-          console.log("\n💸 Transferring tokens...");
-          const transferAmount = ethers.parseEther("50");
-          const entityIds = getEntityIds(entities.length);
-          const result = await sdk.transferFrom(
-            entityIds[1],
-            entityIds[0],
-            entityIds[2],
-            transferAmount
-          );
-          console.log(`✅ Transfer transaction: ${result.hash}`);
-        },
-      },
-      {
-        name: "Switch Entity",
-        action: async () => {
-          console.log("\n🔄 Switching entity...");
-          const entityIds = getEntityIds(entities.length);
-          await sdk.switchEntity(entityIds[1]);
-          const activeEntity = sdk.getActiveEntity();
-          console.log(`✅ Switched to: ${activeEntity?.smartAccount}`);
-        },
-      },
-    ];
-
-    // Execute operations
-    for (const operation of operations) {
-      console.log(`\n📋 Executing: ${operation.name}`);
-      await operation.action();
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Pause between operations
-    }
-
-    // Step 4: Real-time Tracking (tracker.ts)
-    console.log("\n📊 Step 3: Real-time Tracking");
-    console.log("=".repeat(50));
-
-    // Set up event listeners
-    console.log("🎯 Setting up event listeners...");
-
-    sdk.on("balance_changed", (event: any) => {
-      console.log(`💰 Balance Update: ${event.entityId}`);
-      console.log(`  Previous: ${event.formatted.previous}`);
-      console.log(`  Current:  ${event.formatted.new}`);
-      console.log(`  Change:   ${event.formatted.change}`);
-    });
-
-    sdk.on("allowance_changed", (event: any) => {
-      console.log(`✅ Allowance Update: ${event.ownerId} → ${event.spenderId}`);
-      console.log(`  Previous: ${event.formatted.previous}`);
-      console.log(`  Current:  ${event.formatted.new}`);
-      console.log(`  Change:   ${event.formatted.change}`);
-    });
-
-    // Start tracking sessions
-    console.log("\n📈 Starting tracking sessions...");
-
-    // Fast tracking (2 seconds)
-    const fastSession = await sdk.startTracking({
-      interval: 2000,
-      entities: ["entity1", "entity2"],
-      includeBalances: true,
-      includeAllowances: false,
-      onUpdate: (state) => {
-        console.log("\n⚡ Fast Update (2s):");
-        console.log(
-          "Balances:",
-          state.balances.map((b: any) => `${b.entityId}: ${b.formatted}`)
-        );
-      },
-    });
-
-    // Slow tracking (8 seconds) with allowances
-    const slowSession = await sdk.startTracking({
-      interval: 8000,
-      entities: ["entity1", "entity2", "entity3"],
-      includeBalances: true,
-      includeAllowances: true,
-      onUpdate: (state) => {
-        console.log("\n🐌 Slow Update (8s):");
-        console.log(
-          "Balances:",
-          state.balances.map((b: any) => `${b.entityId}: ${b.formatted}`)
-        );
-        console.log(
-          "Allowances:",
-          state.allowances.map(
-            (a: any) => `${a.ownerId} → ${a.spenderId}: ${a.formatted}`
-          )
-        );
-      },
-    });
-
-    // Let tracking run for 30 seconds
-    console.log("⏱️  Tracking for 30 seconds...");
-    await new Promise((resolve) => setTimeout(resolve, 30000));
-
-    // Stop tracking sessions
-    fastSession.stop();
-    slowSession.stop();
-    console.log("🛑 Tracking sessions stopped");
-
-    // Step 5: Final State Report
-    console.log("\n📋 Step 4: Final State Report");
-    console.log("=".repeat(50));
-
-    const finalState = await sdk.getTrackingState();
-    console.log("Final balances:");
-    for (const balance of finalState.balances) {
-      console.log(
-        `  ${balance.entityId}: ${balance.formatted} ${balance.symbol}`
+    try {
+      const allowanceResult = await companyB.giveCashAllowance(
+        companyA.smartAccount!,
+        allowanceAmount
       );
-    }
-
-    console.log("\nFinal allowances:");
-    for (const allowance of finalState.allowances) {
       console.log(
-        `  ${allowance.ownerId} → ${allowance.spenderId}: ${allowance.formatted}`
+        `✅ Allowance transaction confirmed: ${allowanceResult.hash}`
       );
+      console.log(
+        `   Gas used: ${allowanceResult.gasUsed?.toString() || "N/A"}`
+      );
+    } catch (error) {
+      console.log("❌ Allowance transaction failed:", error);
+      return; // Stop execution if allowance fails
     }
 
-    // Step 6: Cleanup
-    console.log("\n🧹 Step 5: Cleanup");
-    console.log("=".repeat(50));
+    // Step 6: Check allowance status
+    console.log("\n📋 Step 6: Checking allowance status...");
+    try {
+      const allowanceToCompanyB = await companyA.getCashApprovedByMe(
+        companyB.smartAccount!
+      );
+      console.log(
+        `Company A approved to Company B: ${allowanceToCompanyB.formatted} tokens`
+      );
 
-    await sdk.cleanup();
-    console.log("✅ SDK cleanup completed");
+      const allowanceToCompanyA = await companyB.getCashApprovedByMe(
+        companyA.smartAccount!
+      );
+      console.log(
+        `Company B approved to Company A: ${allowanceToCompanyA.formatted} tokens`
+      );
+    } catch (error) {
+      console.log("❌ Could not check allowances:", error);
+    }
 
-    console.log("\n🎉 Complete demo flow finished successfully!");
+    // Step 7: Company A transfers cash from Company B (using allowance)
+    console.log("\n📋 Step 7: Company A transfers cash from Company B...");
+    // Use string amount - SDK will handle parsing internally
+    const transferAmount = "0.3"; // 0.3 tokens (adjusted for available balance)
+
+    try {
+      const transferResult = await companyA.getCashFrom(
+        companyB.smartAccount!,
+        transferAmount
+      );
+      console.log(`✅ Transfer transaction confirmed: ${transferResult.hash}`);
+      console.log(
+        `   Gas used: ${transferResult.gasUsed?.toString() || "N/A"}`
+      );
+    } catch (error) {
+      console.log("❌ Transfer transaction failed:", error);
+      return; // Stop execution if transfer fails
+    }
+
+    // Step 8: Check intermediate balances
+    console.log("\n📋 Step 8: Checking intermediate balances...");
+    const intermediateCompanyABalance = await companyA.getCashBalance();
+    const intermediateCompanyBBalance = await companyB.getCashBalance();
+
+    console.log(
+      `Company A intermediate balance: ${intermediateCompanyABalance.formatted} ${intermediateCompanyABalance.symbol}`
+    );
+    console.log(
+      `Company B intermediate balance: ${intermediateCompanyBBalance.formatted} ${intermediateCompanyBBalance.symbol}`
+    );
+
+    // Step 9: Company A gives allowance to Company B
+    console.log("\n📋 Step 9: Company A gives allowance to Company B...");
+    // Use string amount - SDK will handle parsing internally
+    const reverseAllowanceAmount = "0.2"; // 0.2 tokens (adjusted for available balance)
+
+    try {
+      const reverseAllowanceResult = await companyA.giveCashAllowance(
+        companyB.smartAccount!,
+        reverseAllowanceAmount
+      );
+      console.log(
+        `✅ Reverse allowance transaction confirmed: ${reverseAllowanceResult.hash}`
+      );
+      console.log(
+        `   Gas used: ${reverseAllowanceResult.gasUsed?.toString() || "N/A"}`
+      );
+    } catch (error) {
+      console.log("❌ Reverse allowance transaction failed:", error);
+    }
+
+    // Step 10: Company B transfers cash from Company A
+    console.log("\n📋 Step 10: Company B transfers cash from Company A...");
+    // Use string amount - SDK will handle parsing internally
+    const reverseTransferAmount = "0.1"; // 0.1 tokens (adjusted for available balance)
+
+    try {
+      const reverseTransferResult = await companyB.getCashFrom(
+        companyA.smartAccount!,
+        reverseTransferAmount
+      );
+      console.log(
+        `✅ Reverse transfer transaction confirmed: ${reverseTransferResult.hash}`
+      );
+      console.log(
+        `   Gas used: ${reverseTransferResult.gasUsed?.toString() || "N/A"}`
+      );
+    } catch (error) {
+      console.log("❌ Reverse transfer transaction failed:", error);
+    }
+
+    // Step 11: Check final balances
+    console.log("\n📋 Step 11: Checking final balances...");
+    const finalCompanyABalance = await companyA.getCashBalance();
+    const finalCompanyBBalance = await companyB.getCashBalance();
+
+    console.log(
+      `Company A final balance: ${finalCompanyABalance.formatted} ${finalCompanyABalance.symbol}`
+    );
+    console.log(
+      `Company B final balance: ${finalCompanyBBalance.formatted} ${finalCompanyBBalance.symbol}`
+    );
+
+    // Step 12: Final allowance status
+    console.log("\n📋 Step 12: Final allowance status...");
+    try {
+      const finalAllowanceToCompanyB = await companyA.getCashApprovedByMe(
+        companyB.smartAccount!
+      );
+      const finalAllowanceToCompanyA = await companyB.getCashApprovedByMe(
+        companyA.smartAccount!
+      );
+
+      console.log(
+        `Company A approved to Company B: ${finalAllowanceToCompanyB.formatted} tokens`
+      );
+      console.log(
+        `Company B approved to Company A: ${finalAllowanceToCompanyA.formatted} tokens`
+      );
+    } catch (error) {
+      console.log("❌ Could not check final allowances:", error);
+    }
+
+    // Step 13: Network and contract verification
+    console.log("\n📋 Step 13: Verifying network and contract connectivity...");
+
+    // Test network connection
+    const provider = companyA.getProvider();
+    if (provider) {
+      try {
+        const blockNumber = await provider.getBlockNumber();
+        console.log(`✅ Connected to network. Current block: ${blockNumber}`);
+      } catch (error) {
+        console.log("❌ Network connection failed:", error);
+      }
+    }
+
+    // Test CashToken contract
+    const cashTokenContract = companyA.getCashTokenContract();
+    if (cashTokenContract) {
+      try {
+        const name = await cashTokenContract.name();
+        const symbol = await cashTokenContract.symbol();
+        const totalSupply = await cashTokenContract.totalSupply();
+        const decimals = await cashTokenContract.decimals();
+
+        console.log(`✅ CashToken contract accessible:`);
+        console.log(`   Name: ${name}`);
+        console.log(`   Symbol: ${symbol}`);
+        console.log(
+          `   Total Supply: ${ethers.formatUnits(
+            totalSupply,
+            decimals
+          )} ${symbol}`
+        );
+        console.log(`   Decimals: ${decimals}`);
+      } catch (error) {
+        console.log("❌ CashToken contract access failed:", error);
+      }
+    }
+
+    // Step 14: Summary
+    console.log("\n📋 Step 14: Demo Summary");
+    console.log("✅ Complete demo flow executed successfully!");
+    console.log("\n📝 Operations performed:");
+    console.log("  1. ✅ Initialized two company entities with smart accounts");
+    console.log("  2. ✅ Company B gave allowance to Company A (0.5 tokens)");
+    console.log(
+      "  3. ✅ Company A transferred cash from Company B (0.3 tokens)"
+    );
+    console.log("  4. ✅ Company A gave allowance to Company B (0.2 tokens)");
+    console.log(
+      "  5. ✅ Company B transferred cash from Company A (0.1 tokens)"
+    );
+    console.log("  6. ✅ Verified final balances and allowances");
+    console.log("  7. ✅ Confirmed network and contract connectivity");
+
+    console.log("\n💰 Final State:");
+    console.log(
+      `   Company A: ${finalCompanyABalance.formatted} ${finalCompanyABalance.symbol}`
+    );
+    console.log(
+      `   Company B: ${finalCompanyBBalance.formatted} ${finalCompanyBBalance.symbol}`
+    );
   } catch (error) {
     console.error("❌ Error in complete demo flow:", error);
     throw error;
   }
 }
 
-/**
- * Load from demo format example
- */
-async function loadFromDemoFormat() {
-  console.log("\n🔄 Loading from Demo Format Example");
-  console.log("=".repeat(50));
-
-  try {
-    const sdk = new CashTrackerSDK();
-
-    // Load entities from the demo entities.json file
-    const entities = await sdk.loadEntitiesFromDemo(
-      "../../scripts/demo/config/entities.json"
-    );
-    console.log(`✅ Loaded ${entities.length} entities from demo format`);
-
-    // Display entity information
-    console.log("\n📋 Entity Information:");
-    for (const entity of entities) {
-      console.log(`  Entity ID: ${entity.id}`);
-      console.log(`  Address: ${entity.address}`);
-      console.log(`  Smart Account: ${entity.smartAccount}`);
-      console.log("");
-    }
-
-    // Check balances
-    console.log("💰 Current Balances:");
-    const balances = await sdk.getAllBalances();
-    for (const balance of balances) {
-      console.log(
-        `  ${balance.entityId}: ${balance.formatted} ${balance.symbol}`
-      );
-    }
-
-    await sdk.cleanup();
-    console.log("✅ Demo format loading completed");
-  } catch (error) {
-    console.error("❌ Error loading from demo format:", error);
-    throw error;
-  }
-}
-
-/**
- * Interactive menu simulation
- */
-async function interactiveMenu() {
-  console.log("\n🎮 Interactive Menu Simulation");
-  console.log("=".repeat(50));
-
-  try {
-    const sdk = new CashTrackerSDK({
-      network: {
-        rpcUrl: "https://sepolia.base.org",
-        entryPoint: "0x1e2717BC0dcE0a6632fe1B057e948ec3EF50E38b",
-      },
-      contracts: {
-        cashToken: "0xc3E3282048cB2F67b8e08447e95c37f181E00133",
-      },
-    });
-
-    await sdk.initialize();
-    await sdk.loadEntitiesFromDemo("../../scripts/demo/config/entities.json");
-
-    // Simulate menu options from 1.run-account.ts
-    const menuOptions = [
-      "Check CashToken balance",
-      "Approve tokens",
-      "Check allowance",
-      "Transfer approved tokens (transferFrom)",
-      "Switch Account",
-      "Exit",
-    ];
-
-    console.log("📋 Available Operations:");
-    menuOptions.forEach((option, index) => {
-      console.log(`  ${index + 1}. ${option}`);
-    });
-
-    // Simulate user selections
-    const selections = [
-      { choice: 1, description: "Check balance" },
-      { choice: 2, description: "Approve tokens" },
-      { choice: 3, description: "Check allowance" },
-      { choice: 4, description: "Transfer tokens" },
-      { choice: 6, description: "Exit" },
-    ];
-
-    for (const selection of selections) {
-      console.log(`\n🎯 User selected: ${selection.description}`);
-
-      switch (selection.choice) {
-        case 1:
-          const balances = await sdk.getAllBalances();
-          console.log(
-            "Current balances:",
-            balances.map((b) => `${b.entityId}: ${b.formatted}`)
-          );
-          break;
-        case 2:
-          const approveResult = await sdk.approveTokens(
-            "entity1",
-            "entity2",
-            ethers.parseEther("100")
-          );
-          console.log("Approval result:", approveResult.hash);
-          break;
-        case 3:
-          const allowance = await sdk.getAllowance("entity1", "entity2");
-          console.log("Allowance:", allowance.formatted);
-          break;
-        case 4:
-          const transferResult = await sdk.transferFrom(
-            "entity2",
-            "entity1",
-            "entity3",
-            ethers.parseEther("25")
-          );
-          console.log("Transfer result:", transferResult.hash);
-          break;
-        case 6:
-          console.log("Exiting...");
-          break;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-
-    await sdk.cleanup();
-    console.log("✅ Interactive menu completed");
-  } catch (error) {
-    console.error("❌ Error in interactive menu:", error);
-    throw error;
-  }
-}
-
-// Run all examples
+// Main execution
 async function main() {
   try {
     await completeDemoFlow();
-    await loadFromDemoFormat();
-    await interactiveMenu();
   } catch (error) {
-    console.error("❌ Example failed:", error);
+    console.error("❌ Demo failed:", error);
     process.exit(1);
   }
 }
 
-// Run if this file is executed directly
+// Run the demo
 if (require.main === module) {
   main();
 }
-
-export { completeDemoFlow, loadFromDemoFormat, interactiveMenu };

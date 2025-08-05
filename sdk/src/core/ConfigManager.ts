@@ -57,17 +57,6 @@ export class ConfigManager {
         contracts: {
           cashToken: process.env.CASH_TOKEN_ADDRESS || "",
         },
-        options: {
-          gasLimit: process.env.GAS_LIMIT
-            ? parseInt(process.env.GAS_LIMIT)
-            : undefined,
-          gasPrice: process.env.GAS_PRICE,
-          maxFeePerGas: process.env.MAX_FEE_PER_GAS,
-          retryAttempts: process.env.RETRY_ATTEMPTS
-            ? parseInt(process.env.RETRY_ATTEMPTS)
-            : 3,
-          timeout: process.env.TIMEOUT ? parseInt(process.env.TIMEOUT) : 30000,
-        },
       };
 
       // Load entities from environment if available
@@ -153,28 +142,21 @@ export class ConfigManager {
    */
   async saveConfig(config: SDKConfig, filePath?: string): Promise<void> {
     try {
-      const targetPath = filePath || this.configPath;
-      if (!targetPath) {
-        throw SDKError.configError(
-          "No file path specified for saving configuration"
-        );
-      }
+      const targetPath = filePath || this.configPath || "sdk-config.json";
+      const sanitizedConfig = this.sanitizeConfigForSaving(config);
 
-      // Create directory if it doesn't exist
+      // Ensure directory exists
       const dir = path.dirname(targetPath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      // Remove sensitive data before saving
-      const safeConfig = this.sanitizeConfigForSaving(config);
-
-      fs.writeFileSync(targetPath, JSON.stringify(safeConfig, null, 2));
+      fs.writeFileSync(targetPath, JSON.stringify(sanitizedConfig, null, 2));
       this.configPath = targetPath;
     } catch (error) {
-      throw SDKError.configError(`Failed to save configuration: ${error}`, {
-        filePath,
-      });
+      throw SDKError.configError(
+        `Failed to save configuration: ${error}`
+      );
     }
   }
 
@@ -220,7 +202,7 @@ export class ConfigManager {
   }
 
   /**
-   * Get configuration path
+   * Get configuration file path
    */
   getConfigPath(): string | null {
     return this.configPath;
@@ -241,37 +223,6 @@ export class ConfigManager {
         cashToken:
           process.env.CASH_TOKEN_ADDRESS ||
           "0xc3E3282048cB2F67b8e08447e95c37f181E00133",
-      },
-      options: {
-        gasLimit: process.env.GAS_LIMIT
-          ? parseInt(process.env.GAS_LIMIT)
-          : 500000,
-        retryAttempts: process.env.RETRY_ATTEMPTS
-          ? parseInt(process.env.RETRY_ATTEMPTS)
-          : 3,
-        timeout: process.env.TIMEOUT ? parseInt(process.env.TIMEOUT) : 30000,
-      },
-      paths: {
-        entitiesConfig:
-          process.env.ENTITIES_CONFIG_PATH ||
-          "../scripts/demo/config/entities.json",
-        smartAccountArtifact: process.env.SMART_ACCOUNT_ARTIFACT_PATH,
-        cashTokenArtifact: process.env.CASH_TOKEN_ARTIFACT_PATH,
-        logs: process.env.LOGS_PATH || "./logs",
-      },
-      environment: {
-        networkRpcUrl: process.env.NETWORK_RPC_URL,
-        entryPoint: process.env.ENTRY_POINT,
-        cashTokenAddress: process.env.CASH_TOKEN_ADDRESS,
-        gasLimit: process.env.GAS_LIMIT
-          ? parseInt(process.env.GAS_LIMIT)
-          : undefined,
-        retryAttempts: process.env.RETRY_ATTEMPTS
-          ? parseInt(process.env.RETRY_ATTEMPTS)
-          : undefined,
-        timeout: process.env.TIMEOUT
-          ? parseInt(process.env.TIMEOUT)
-          : undefined,
       },
     };
   }
@@ -319,30 +270,22 @@ export class ConfigManager {
           address: entity.address,
           smartAccount: entity.smartAccount,
         })),
-        options: {
-          gasLimit: 500000,
-          retryAttempts: 3,
-          timeout: 30000,
-        },
       };
 
       const validation = ValidationUtils.validateConfig(config);
       ValidationUtils.validateAndThrow(
         validation,
-        "Demo entities configuration validation failed"
+        "Demo format configuration validation failed"
       );
 
       this.config = config;
-      this.configPath = filePath;
-
       return config;
     } catch (error) {
       if (error instanceof SDKError) {
         throw error;
       }
       throw SDKError.configError(
-        `Failed to load demo entities configuration: ${error}`,
-        { filePath }
+        `Failed to load entities from demo format: ${error}`
       );
     }
   }

@@ -310,9 +310,9 @@ export class EntityManager {
       const path = require("path");
       const fs = require("fs");
 
-      // Get artifact path from config or try multiple possible paths
+      // Try multiple possible paths for SmartAccount artifact
       const possiblePaths = [
-        this.config?.paths?.smartAccountArtifact,
+        path.join(__dirname, "../artifacts/SmartAccountAbi.json"),
         path.join(
           __dirname,
           "../../../artifacts/contracts/SmartAccount.sol/SmartAccount.json"

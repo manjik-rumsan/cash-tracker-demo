@@ -8,31 +8,11 @@ export interface SDKConfig {
   contracts: {
     cashToken: string;
     smartAccountFactory?: string;
+    cashtokenAbi?: any; // ABI for cash token contract
+    entitySmartAccount?: string; // Smart account address for this entity
+    defaultPrivatekey?: string; // Default private key for this entity
   };
   entities?: EntityConfig[];
-  options?: {
-    gasLimit?: number;
-    gasPrice?: string;
-    maxFeePerGas?: string;
-    retryAttempts?: number;
-    timeout?: number;
-  };
-  // File paths and artifacts
-  paths?: {
-    entitiesConfig?: string;
-    smartAccountArtifact?: string;
-    cashTokenArtifact?: string;
-    logs?: string;
-  };
-  // Environment overrides
-  environment?: {
-    networkRpcUrl?: string;
-    entryPoint?: string;
-    cashTokenAddress?: string;
-    gasLimit?: number;
-    retryAttempts?: number;
-    timeout?: number;
-  };
 }
 
 export interface EntityConfig {

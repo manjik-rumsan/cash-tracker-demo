@@ -1,170 +1,384 @@
 # Cash Tracker SDK
 
-A comprehensive TypeScript SDK for managing cash tracking operations using Account Abstraction (ERC-4337) and ERC-20 tokens.
+A TypeScript SDK for managing cash tokens and smart accounts on blockchain networks. Each SDK instance represents a single entity with its own smart account.
 
-## 🏗️ Architecture
+## Features
 
-The SDK is built around three core concepts from the demo scripts:
+- **Entity-Based Design**: Each SDK instance represents one entity with its own smart account
+- **Simplified Configuration**: Easy setup with network and contract configuration
+- **Cash Token Operations**: Approve, transfer, and check balances with intuitive methods
+- **Smart Account Integration**: Execute operations through smart accounts for enhanced security
+- **Real-time Tracking**: Monitor balances and allowances in real-time
+- **Event System**: Subscribe to balance and allowance changes
+- **Automatic Balance Checking**: SDK automatically checks balances before approvals
+- **Flexible Amount Handling**: Support for string, number, or bigint amounts
 
-1. **Entity Management** - Smart account deployment and management
-2. **Operations** - Token operations (balance, approval, transfer)
-3. **Tracking** - Real-time monitoring of balances and allowances
+## Installation
 
-## 📁 Structure
-
-```
-sdk/
-├── src/
-│   ├── core/
-│   │   ├── CashTrackerSDK.ts          # Main SDK class
-│   │   ├── ConfigManager.ts            # Configuration management
-│   │   ├── ValidationUtils.ts          # Input validation
-│   │   └── SDKError.ts                 # Custom error handling
-│   ├── entities/
-│   │   ├── EntityManager.ts            # Smart account lifecycle
-│   │   ├── Entity.ts                   # Entity types and interfaces
-│   │   └── SmartAccountFactory.ts      # Smart account deployment
-│   ├── operations/
-│   │   ├── OperationsManager.ts        # Token operations
-│   │   ├── TransactionManager.ts       # Transaction handling
-│   │   └── GasEstimator.ts             # Gas estimation
-│   ├── tracking/
-│   │   ├── TrackingManager.ts          # Real-time tracking
-│   │   ├── EventManager.ts             # Event subscriptions
-│   │   └── StateManager.ts             # State management
-│   ├── types/
-│   │   ├── index.ts                    # Type exports
-│   │   ├── contracts.ts                # Contract interfaces
-│   │   └── events.ts                   # Event types
-│   └── utils/
-│       ├── constants.ts                # SDK constants
-│       ├── helpers.ts                  # Utility functions
-│       └── formatters.ts               # Data formatting
-├── examples/
-│   ├── basic-usage.ts                  # Basic SDK usage
-│   ├── multi-entity.ts                 # Multi-entity operations
-│   ├── real-time-tracking.ts           # Tracking examples
-│   └── advanced-operations.ts          # Advanced features
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-└── docs/
-    ├── api.md                          # API documentation
-    ├── examples.md                      # Usage examples
-    └── migration.md                    # Migration guide
+```bash
+npm install @rumsan/cash-tracker-sdk
 ```
 
-## 🚀 Quick Start
+## Quick Start
+
+### 1. Configuration Setup
+
+Create a configuration file `config/entities.json`:
+
+```json
+{
+  "network": "https://sepolia.base.org",
+  "entryPoint": "0x1e2717BC0dcE0a6632fe1B057e948ec3EF50E38b",
+  "entities": [
+    {
+      "privateKey": "your_private_key_here",
+      "address": "0x...",
+      "smartAccount": "0x..."
+    },
+    {
+      "privateKey": "another_private_key_here",
+      "address": "0x...",
+      "smartAccount": "0x..."
+    }
+  ]
+}
+```
+
+### 2. Basic Setup
 
 ```typescript
-import { CashTrackerSDK } from "./src/core/CashTrackerSDK";
+import { CashTrackerSDK } from "@rumsan/cash-tracker-sdk";
+import { ethers } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
 
-const sdk = new CashTrackerSDK({
-  network: "base-sepolia",
-  rpcUrl: "https://sepolia.base.org",
-  entryPoint: "0x1e2717BC0dcE0a6632fe1B057e948ec3EF50E38b",
-  cashToken: "0xc3E3282048cB2F67b8e08447e95c37f181E00133",
+// Load config from config/entities.json
+const loadConfig = () => {
+  const configPath = path.join(__dirname, "config/entities.json");
+  const configData = fs.readFileSync(configPath, "utf8");
+  return JSON.parse(configData);
+};
+
+const config = loadConfig();
+const entities = config.entities;
+
+// Initialize SDK for Entity 1
+const entity1 = new CashTrackerSDK({
+  network: {
+    rpcUrl: config.network,
+    entryPoint: config.entryPoint,
+  },
+  contracts: {
+    cashToken: process.env.CASH_TOKEN!,
+    smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
+    cashtokenAbi: require("./src/artifacts/CashTokenAbi.json"),
+    entitySmartAccount: entities[0].smartAccount,
+    defaultPrivatekey: entities[0].privateKey,
+  },
 });
 
-await sdk.initialize();
-
-// Deploy smart accounts
-const entities = await sdk.entities.deployMultiple(privateKeys);
-
-// Check balance
-const balance = await sdk.operations.getBalance("entity1");
-
-// Approve tokens
-await sdk.operations.approveTokens("entity1", "entity2", amount);
-
-// Start tracking
-const session = await sdk.tracking.startTracking({
-  interval: 5000,
-  entities: ["entity1", "entity2"],
-});
+// Initialize the SDK
+await entity1.initialize();
 ```
 
-## 🎯 Core Features
+### 3. Connect Wallet (Optional)
 
-### Entity Management
+```typescript
+// Connect using private key
+entity1.connect(entities[0].privateKey);
 
-- Deploy smart accounts for multiple entities
-- Load existing configurations
-- Validate entity setup
-- Switch between active entities
+// Or connect using wallet object
+const wallet = new ethers.Wallet(privateKey, provider);
+entity1.connect(wallet);
+```
 
-### Operations
+### 4. Basic Operations
 
-- Check token balances
-- Approve token spending
-- Transfer tokens using allowances
-- Gas estimation and transaction management
+```typescript
+// Check balance
+const balance = await entity1.getCashBalance();
+console.log(`Balance: ${balance.formatted} ${balance.symbol}`);
+
+// Give allowance to another address (SDK handles parsing internally)
+const result = await entity1.giveCashAllowance(otherAddress, "100"); // 100 tokens
+console.log(`Allowance transaction: ${result.hash}`);
+
+// Transfer cash from another address (using allowance)
+const transferResult = await entity1.getCashFrom(otherAddress, "50"); // 50 tokens
+console.log(`Transfer transaction: ${transferResult.hash}`);
+
+// Check allowances
+const approvedToMe = await entity1.getCashApprovedToMe(ownerAddress);
+const approvedByMe = await entity1.getCashApprovedByMe(spenderAddress);
+```
+
+## Configuration
+
+### SDKConfig Interface
+
+```typescript
+interface SDKConfig {
+  network: {
+    rpcUrl: string;
+    chainId?: number;
+    entryPoint: string;
+  };
+  contracts: {
+    cashToken: string;
+    smartAccountFactory?: string;
+    cashtokenAbi?: any;
+    entitySmartAccount?: string;
+    defaultPrivatekey?: string;
+  };
+  entities?: EntityConfig[];
+}
+```
+
+### Environment Variables
+
+```bash
+# Contract Addresses
+CASH_TOKEN=0xc3E3282048cB2F67b8e08447e95c37f181E00133
+SMART_ACCOUNT_FACTORY=0x...
+```
+
+### Artifacts
+
+The SDK automatically loads ABIs from the `src/artifacts/` directory:
+
+- `src/artifacts/CashTokenAbi.json` - CashToken contract ABI
+- `src/artifacts/SmartAccountAbi.json` - SmartAccount contract ABI
+- `src/artifacts/SmartAccountFactoryAbi.json` - SmartAccountFactory contract ABI
+
+## API Reference
+
+### Core Methods
+
+#### `initialize(config?: SDKConfig): Promise<void>`
+
+Initialize the SDK with configuration.
+
+#### `connect(walletOrPrivateKey: ethers.Wallet | string): void`
+
+Connect a wallet to the SDK instance.
+
+#### `getCashBalance(): Promise<TokenBalance>`
+
+Get the current cash balance of the entity.
+
+#### `giveCashAllowance(spenderAddress: string, amount: string | number | bigint): Promise<TransactionResult>`
+
+Give cash allowance to another address. The SDK automatically:
+
+- Checks if you have sufficient balance for approval
+- Handles amount parsing (string, number, or bigint)
+- Provides detailed error messages for insufficient balance
+
+#### `getCashFrom(fromAddress: string, amount?: string | number | bigint): Promise<TransactionResult>`
+
+Transfer cash from another address using allowance. The SDK automatically:
+
+- Checks if there's sufficient allowance
+- Handles amount parsing (string, number, or bigint)
+- Uses full allowance if amount not specified
+- Provides detailed error messages for insufficient allowance
+
+#### `getCashApprovedToMe(ownerAddress: string): Promise<TokenAllowance>`
+
+Get cash allowance approved to me by another address.
+
+#### `getCashApprovedByMe(spenderAddress: string): Promise<TokenAllowance>`
+
+Get cash allowance I approved to another address.
+
+### Utility Methods
+
+#### `getProvider(): ethers.Provider | null`
+
+Get the current provider instance.
+
+#### `getCashTokenContract(): ethers.Contract | null`
+
+Get the CashToken contract instance.
+
+#### `get address(): string | null`
+
+Get the current entity address.
+
+#### `get smartAccount(): string | null`
+
+Get the current smart account address.
+
+## Examples
+
+### Multi-Entity Cash Transfer
+
+```typescript
+// Load configuration
+const config = loadConfig();
+const entities = config.entities;
+
+// Initialize two entities
+const companyA = new CashTrackerSDK({
+  network: {
+    rpcUrl: config.network,
+    entryPoint: config.entryPoint,
+  },
+  contracts: {
+    cashToken: process.env.CASH_TOKEN!,
+    cashtokenAbi: require("./src/artifacts/CashTokenAbi.json"),
+    entitySmartAccount: entities[0].smartAccount,
+    defaultPrivatekey: entities[0].privateKey,
+  },
+});
+
+const companyB = new CashTrackerSDK({
+  network: {
+    rpcUrl: config.network,
+    entryPoint: config.entryPoint,
+  },
+  contracts: {
+    cashToken: process.env.CASH_TOKEN!,
+    cashtokenAbi: require("./src/artifacts/CashTokenAbi.json"),
+    entitySmartAccount: entities[1].smartAccount,
+    defaultPrivatekey: entities[1].privateKey,
+  },
+});
+
+await companyA.initialize();
+await companyB.initialize();
+
+// Company A gives allowance to Company B (SDK handles parsing)
+await companyA.giveCashAllowance(companyB.address!, "1000");
+
+// Company A transfers cash from Company B (SDK handles parsing)
+await companyA.getCashFrom(companyB.address!, "500");
+
+// Check final balances
+const finalBalanceA = await companyA.getCashBalance();
+const finalBalanceB = await companyB.getCashBalance();
+```
+
+### Amount Handling Examples
+
+```typescript
+// All these work the same way - SDK handles parsing internally
+await entity.giveCashAllowance(spenderAddress, "100"); // String
+await entity.giveCashAllowance(spenderAddress, 100); // Number
+await entity.giveCashAllowance(spenderAddress, 100n); // BigInt
+
+await entity.getCashFrom(fromAddress, "50"); // String
+await entity.getCashFrom(fromAddress, 50); // Number
+await entity.getCashFrom(fromAddress, 50n); // BigInt
+await entity.getCashFrom(fromAddress); // Use full allowance
+```
 
 ### Real-time Tracking
 
-- Live balance monitoring
-- Allowance tracking
-- Event subscriptions
-- Configurable refresh intervals
+```typescript
+// Subscribe to balance changes
+entity1.on("balance_changed", (event) => {
+  console.log(`Balance changed: ${event.formatted.new}`);
+});
 
-### Configuration
-
-- Multiple config sources (file, env, object)
-- Environment-specific settings
-- Validation and error handling
-
-## 📋 Implementation Plan
-
-### Phase 1: Core Infrastructure
-
-- [ ] SDK class structure
-- [ ] Configuration management
-- [ ] Error handling and validation
-- [ ] Type definitions
-
-### Phase 2: Entity Management
-
-- [ ] Smart account deployment
-- [ ] Entity lifecycle management
-- [ ] Configuration persistence
-
-### Phase 3: Operations Layer
-
-- [ ] Token operations
-- [ ] Transaction management
-- [ ] Gas estimation
-
-### Phase 4: Tracking System
-
-- [ ] Real-time monitoring
-- [ ] Event system
-- [ ] State management
-
-### Phase 5: Documentation & Examples
-
-- [ ] API documentation
-- [ ] Usage examples
-- [ ] Migration guides
-
-## 🔧 Development
-
-```bash
-# Install dependencies
-npm install
-
-# Run tests
-npm test
-
-# Build SDK
-npm run build
-
-# Run examples
-npm run examples
+// Subscribe to allowance changes
+entity1.on("allowance_changed", (event) => {
+  console.log(`Allowance changed: ${event.formatted.new}`);
+});
 ```
 
-## 📚 Documentation
+## Error Handling
 
-- [API Reference](./docs/api.md)
-- [Usage Examples](./docs/examples.md)
-- [Migration Guide](./docs/migration.md)
+The SDK uses a custom error system with specific error codes:
+
+```typescript
+import { SDKError, SDKErrorCode } from "@rumsan/cash-tracker-sdk";
+
+try {
+  await entity1.giveCashAllowance(address, "1000");
+} catch (error) {
+  if (error instanceof SDKError) {
+    switch (error.code) {
+      case SDKErrorCode.INVALID_CONFIG:
+        console.log("Configuration error:", error.message);
+        break;
+      case SDKErrorCode.TRANSACTION_FAILED:
+        console.log("Transaction failed:", error.message);
+        break;
+      case SDKErrorCode.NETWORK_ERROR:
+        console.log("Network error:", error.message);
+        break;
+      case SDKErrorCode.VALIDATION_ERROR:
+        console.log("Validation error:", error.message);
+        // This includes insufficient balance/allowance errors
+        break;
+    }
+  }
+}
+```
+
+## Types
+
+### TokenBalance
+
+```typescript
+interface TokenBalance {
+  entityId: string;
+  balance: bigint;
+  formatted: string;
+  decimals: number;
+  symbol: string;
+}
+```
+
+### TokenAllowance
+
+```typescript
+interface TokenAllowance {
+  ownerId: string;
+  spenderId: string;
+  allowance: bigint;
+  formatted: string;
+}
+```
+
+### TransactionResult
+
+```typescript
+interface TransactionResult {
+  hash: string;
+  status: "pending" | "confirmed" | "failed";
+  receipt?: any;
+  error?: string;
+  gasUsed?: bigint;
+  gasPrice?: bigint;
+}
+```
+
+## Development
+
+### Running Examples
+
+```bash
+# Basic usage
+npm run example:basic
+
+# Complete demo flow
+npm run example:complete
+```
+
+### Building
+
+```bash
+npm run build
+```
+
+### Testing
+
+```bash
+npm test
+```
+
+## License
+
+MIT License - see LICENSE file for details.
