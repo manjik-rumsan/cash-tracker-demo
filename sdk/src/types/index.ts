@@ -13,12 +13,67 @@ export interface SDKConfig {
     defaultPrivatekey?: string; // Default private key for this entity
   };
   entities?: EntityConfig[];
+  flowTracking?: FlowTrackingConfig; // New flow tracking configuration
+}
+
+export interface FlowTrackingConfig {
+  smartAddresses: string[]; // Array of smart addresses to track flow between
+  interval?: number; // Tracking interval in milliseconds
+  onFlowUpdate?: (flowData: TokenFlowData) => void; // Callback for flow updates
+}
+
+export interface TokenFlowData {
+  timestamp: number;
+  flows: TokenFlow[];
+  balances: TokenBalance[];
+  allowances: TokenAllowance[];
+}
+
+export interface TokenFlow {
+  from: string;
+  to: string;
+  amount: bigint;
+  formatted: string;
+  transactionHash?: string;
+  timestamp: number;
+  type: "transfer" | "allowance" | "balance_change";
+}
+
+export interface FlowHistoryEntry {
+  step: number;
+  from: string;
+  to: string;
+  amount: bigint;
+  formatted: string;
+  transactionHash?: string;
+  timestamp: number;
+  type: "transfer" | "allowance" | "balance_change";
+  blockNumber?: number;
+}
+
+export interface FlowHistory {
+  flowId: string;
+  startTime: number;
+  endTime?: number;
+  path: string[]; // A->B->C path
+  entries: FlowHistoryEntry[];
+  totalAmount: bigint;
+  formattedTotalAmount: string;
+  status: "active" | "completed" | "failed";
+  description?: string;
+}
+
+export interface FlowHistoryOptions {
+  maxHistory?: number; // Maximum number of flow histories to keep
+  includeBlockNumbers?: boolean;
+  includeDescriptions?: boolean;
 }
 
 export interface EntityConfig {
   privateKey: string;
   address: string;
   smartAccount: string;
+  alias?: string; // Optional alias for the entity
 }
 
 export interface Entity {
@@ -28,6 +83,95 @@ export interface Entity {
   smartAccount: string;
   wallet?: any; // ethers.Wallet
   smartAccountContract?: any; // ethers.Contract
+}
+
+// Comprehensive Transaction Flow History Types
+export interface TransactionFlowSummary {
+  totalPaths: number;
+  totalFlows: number;
+  totalAmount: string;
+  totalTransactions: number;
+  timeRange: {
+    start: string;
+    end: string;
+  };
+}
+
+export interface TransactionFlowPath {
+  id: string;
+  path: string[];
+  pathAliases: string[];
+  totalFlows: number;
+  totalAmount: string;
+  entityTotals: Record<
+    string,
+    {
+      received: string;
+      sent: string;
+      balance: string;
+    }
+  >;
+  entityTotalsWithAliases: Record<
+    string,
+    {
+      received: string;
+      sent: string;
+      balance: string;
+    }
+  >;
+}
+
+export interface TransactionFlowStep {
+  stepId: string;
+  stepNumber: number;
+  from: {
+    address: string;
+    alias: string;
+    role: "sender" | "intermediary" | "receiver";
+  };
+  to: {
+    address: string;
+    alias: string;
+    role: "sender" | "intermediary" | "receiver";
+  };
+  amount: string;
+  transactionHash: string;
+  blockNumber: number;
+  timestamp: number;
+  status: "completed" | "pending" | "failed";
+}
+
+export interface TransactionFlow {
+  flowId: string;
+  pathId: string;
+  from: {
+    address: string;
+    alias: string;
+  };
+  to: {
+    address: string;
+    alias: string;
+  };
+  amount: string;
+  transactionHash: string;
+  blockNumber: number;
+  timestamp: number;
+  type: "transfer" | "allowance" | "balance_change";
+}
+
+export interface BlockchainInfo {
+  network: string;
+  contractAddress: string;
+  lastBlockNumber: number;
+  queryTimestamp: number;
+}
+
+export interface TransactionFlowHistory {
+  summary: TransactionFlowSummary;
+  paths: TransactionFlowPath[];
+  steps: TransactionFlowStep[];
+  flows: TransactionFlow[];
+  blockchainInfo: BlockchainInfo;
 }
 
 // Operation Types

@@ -1,5 +1,5 @@
 import * as dotenv from "dotenv";
-import { CashTrackerSDK } from "../src/core/CashTrackerSDK";
+import { CashTokenSDK } from "../src/core/CashTokenSDK";
 import { ethers } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
@@ -27,14 +27,13 @@ export async function basicUsage(): Promise<void> {
     }
 
     // 1. Initialize SDK with full configuration for Entity 1
-    const entity1 = new CashTrackerSDK({
+    const entity1 = new CashTokenSDK({
       network: {
         rpcUrl: config.network,
         entryPoint: config.entryPoint,
       },
       contracts: {
         cashToken: process.env.CASH_TOKEN!,
-        smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
         cashtokenAbi: require("../src/artifacts/CashTokenAbi.json"),
         entitySmartAccount: entities[0].smartAccount,
         defaultPrivatekey: entities[0].privateKey,
@@ -42,28 +41,26 @@ export async function basicUsage(): Promise<void> {
     });
 
     // 2. Initialize SDK with full configuration for Entity 2
-    const entity2 = new CashTrackerSDK({
+    const entity2 = new CashTokenSDK({
       network: {
         rpcUrl: config.network,
         entryPoint: config.entryPoint,
       },
       contracts: {
         cashToken: process.env.CASH_TOKEN!,
-        smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
         cashtokenAbi: require("../src/artifacts/CashTokenAbi.json"),
         entitySmartAccount: entities[1].smartAccount,
         defaultPrivatekey: entities[1].privateKey,
       },
     });
 
-    const entity3 = new CashTrackerSDK({
+    const entity3 = new CashTokenSDK({
       network: {
         rpcUrl: config.network,
         entryPoint: config.entryPoint,
       },
       contracts: {
         cashToken: process.env.CASH_TOKEN!,
-        smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
         cashtokenAbi: require("../src/artifacts/CashTokenAbi.json"),
         entitySmartAccount: entities[2].smartAccount,
         defaultPrivatekey: entities[2].privateKey,

@@ -168,7 +168,7 @@ const session = await sdk.startTracking({
 ### SDK (Object-Oriented)
 
 ```
-CashTrackerSDK
+CashTokenSDK
 ├── EntityManager (Smart Account lifecycle)
 ├── OperationsManager (Token operations)
 ├── TrackingManager (Real-time monitoring)
@@ -240,7 +240,7 @@ while (isTracking) {
 
 ```typescript
 // Initialize SDK
-const sdk = new CashTrackerSDK(config);
+const sdk = new CashTokenSDK(config);
 await sdk.initialize();
 
 // Deploy smart accounts

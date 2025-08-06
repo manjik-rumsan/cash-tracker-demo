@@ -58,6 +58,19 @@ export interface TrackingEvent extends BaseEvent {
   error?: string;
 }
 
+// Flow Tracking Events
+export interface FlowTrackingEvent extends BaseEvent {
+  type:
+    | "flow_tracking_started"
+    | "flow_tracking_stopped"
+    | "flow_tracking_error"
+    | "flow_update";
+  sessionId?: string;
+  smartAddresses?: string[];
+  data?: any;
+  error?: string;
+}
+
 // Balance Events
 export interface BalanceChangeEvent extends BaseEvent {
   type: "balance_changed";
@@ -141,6 +154,7 @@ export type SDKEventTypes =
   | OperationEvent
   | TransactionEvent
   | TrackingEvent
+  | FlowTrackingEvent
   | BalanceChangeEvent
   | AllowanceChangeEvent;
 

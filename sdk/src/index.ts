@@ -1,5 +1,5 @@
 // Main SDK exports
-export { CashTrackerSDK } from "./core/CashTrackerSDK";
+export { CashTokenSDK } from "./core/CashTokenSDK";
 export { ConfigManager } from "./core/ConfigManager";
 export { SDKError, ErrorUtils } from "./core/SDKError";
 
@@ -7,6 +7,7 @@ export { SDKError, ErrorUtils } from "./core/SDKError";
 export { EntityManager } from "./entities/EntityManager";
 export { OperationsManager } from "./operations/OperationsManager";
 export { TrackingManager } from "./tracking/TrackingManager";
+export { FlowTrackingManager } from "./tracking/FlowTrackingManager";
 export { EventManager } from "./tracking/EventManager";
 
 // Utility exports

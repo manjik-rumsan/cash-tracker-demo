@@ -7,6 +7,10 @@ import {
   TransactionResult,
   ValidationResult,
   SDKErrorCode,
+  TokenFlowData,
+  FlowHistory,
+  FlowHistoryOptions,
+  TransactionFlowHistory,
 } from "../types";
 import { ConfigManager } from "./ConfigManager";
 import { SDKError } from "./SDKError";
@@ -15,12 +19,13 @@ import { ValidationUtils } from "../utils/ValidationUtils";
 import { EntityManager } from "../entities/EntityManager";
 import { OperationsManager } from "../operations/OperationsManager";
 import { EventManager } from "../tracking/EventManager";
+import { FlowTrackingManager } from "../tracking/FlowTrackingManager";
 
 /**
  * Main Cash Tracker SDK class
  * Each instance represents a single entity with its own smart account
  */
-export class CashTrackerSDK {
+export class CashTokenSDK {
   private config: SDKConfig | null = null;
   private provider: ethers.Provider | null = null;
   private cashTokenContract: ethers.Contract | null = null;
@@ -35,12 +40,14 @@ export class CashTrackerSDK {
   public readonly entities: EntityManager;
   public readonly operations: OperationsManager;
   public readonly events: EventManager;
+  public readonly flowTracking: FlowTrackingManager;
 
   constructor(config?: SDKConfig) {
     this.configManager = new ConfigManager();
     this.entities = new EntityManager();
     this.operations = new OperationsManager();
     this.events = new EventManager();
+    this.flowTracking = new FlowTrackingManager();
 
     if (config) {
       this.initializeWithConfig(config);
@@ -73,6 +80,10 @@ export class CashTrackerSDK {
 
   /**
    * Initialize the SDK with configuration
+   * Supports three modes:
+   * 1. With defaultPrivatekey - for single entity operations
+   * 2. With connect() - for wallet connection
+   * 3. With entities (smart addresses array) - for flow tracking
    */
   async initialize(config?: SDKConfig): Promise<void> {
     try {
@@ -113,6 +124,11 @@ export class CashTrackerSDK {
         this.config!,
         this
       );
+      await this.flowTracking.initialize(
+        this.provider,
+        this.cashTokenContract,
+        this.config!
+      );
 
       this.isInitialized = true;
 
@@ -133,6 +149,150 @@ export class CashTrackerSDK {
   private async initializeWithConfig(config: SDKConfig): Promise<void> {
     this.config = config;
     await this.initialize();
+  }
+
+  /**
+   * Start flow tracking with smart addresses array
+   * This is the main method for flow tracking when no private key or connect is used
+   */
+  async startFlowTracking(
+    smartAddresses: string[],
+    options?: {
+      interval?: number;
+      onFlowUpdate?: (flowData: TokenFlowData) => void;
+    }
+  ): Promise<void> {
+    if (!this.isReady()) {
+      throw SDKError.configError("SDK not initialized");
+    }
+
+    await this.flowTracking.startFlowTracking(smartAddresses, options);
+  }
+
+  /**
+   * Stop flow tracking
+   */
+  async stopFlowTracking(): Promise<void> {
+    await this.flowTracking.stopFlowTracking();
+  }
+
+  /**
+   * Get current flow data
+   */
+  async getFlowData(): Promise<TokenFlowData> {
+    return await this.flowTracking.getCurrentFlowData();
+  }
+
+  /**
+   * Display flow status
+   */
+  async displayFlowStatus(): Promise<void> {
+    await this.flowTracking.displayFlowStatus();
+  }
+
+  /**
+   * Check if flow tracking is active
+   */
+  isFlowTracking(): boolean {
+    return this.flowTracking.isFlowTracking();
+  }
+
+  /**
+   * Get tracked addresses
+   */
+  getTrackedAddresses(): string[] {
+    return this.flowTracking.getTrackedAddresses();
+  }
+
+  /**
+   * Get complete flow history
+   */
+  getFlowHistory(): FlowHistory[] {
+    return this.flowTracking.getFlowHistory();
+  }
+
+  /**
+   * Get active flows
+   */
+  getActiveFlows(): FlowHistory[] {
+    return this.flowTracking.getActiveFlows();
+  }
+
+  /**
+   * Get flow history by ID
+   */
+  getFlowHistoryById(flowId: string): FlowHistory | undefined {
+    return this.flowTracking.getFlowHistoryById(flowId);
+  }
+
+  /**
+   * Get flow history for a specific path (A->B->C)
+   */
+  getFlowHistoryByPath(path: string[]): FlowHistory[] {
+    return this.flowTracking.getFlowHistoryByPath(path);
+  }
+
+  /**
+   * Get flow history for a specific address
+   */
+  getFlowHistoryByAddress(address: string): FlowHistory[] {
+    return this.flowTracking.getFlowHistoryByAddress(address);
+  }
+
+  /**
+   * Display complete flow history
+   */
+  displayFlowHistory(): void {
+    this.flowTracking.displayFlowHistory();
+  }
+
+  /**
+   * Display active flows
+   */
+  displayActiveFlows(): void {
+    this.flowTracking.displayActiveFlows();
+  }
+
+  /**
+   * Set flow history options
+   */
+  setFlowHistoryOptions(options: FlowHistoryOptions): void {
+    this.flowTracking.setFlowHistoryOptions(options);
+  }
+
+  /**
+   * Get all flows as JSON array by querying blockchain directly
+   *
+   * @param entities - Array of strings (addresses) or array of objects with smartAddress and alias
+   */
+  async getAllFlowsAsJSON(
+    entities?: string[] | Array<{ smartAddress: string; alias: string }>
+  ): Promise<any[]> {
+    return this.flowTracking.getAllFlowsAsJSON(entities);
+  }
+
+  /**
+   * Get flow summary by path (similar to flow diagram)
+   */
+  async getFlowSummaryByPath(path: string[]): Promise<any> {
+    return this.flowTracking.getFlowSummaryByPath(path);
+  }
+
+  /**
+   * Get all flow summaries (for all tracked paths)
+   */
+  async getAllFlowSummaries(): Promise<any[]> {
+    return this.flowTracking.getAllFlowSummaries();
+  }
+
+  /**
+   * Get comprehensive transaction flow history with steps, summary, and blockchain info
+   * Perfect for frontend mapping and visualization
+   */
+  async getTransactionFlowHistory(
+    entities?: string[] | Array<{ smartAddress: string; alias: string }>
+  ): Promise<TransactionFlowHistory> {
+    return this.flowTracking.getTransactionFlowHistory(entities);
   }
 
   /**

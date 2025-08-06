@@ -33,22 +33,37 @@ export class EntityManager {
       for (const entityConfig of config.entities) {
         const entity: Entity = {
           id: `entity${this.entities.size + 1}`,
-          privateKey: entityConfig.privateKey,
-          address: entityConfig.address,
+          privateKey: entityConfig.privateKey || "",
+          address: entityConfig.address || "",
           smartAccount: entityConfig.smartAccount,
         };
 
-        // Create wallet and smart account contract instances
-        const wallet = new ethers.Wallet(entity.privateKey, provider);
-        entity.wallet = wallet;
+        // Only create wallet if private key is provided (for write operations)
+        if (entityConfig.privateKey) {
+          try {
+            const wallet = new ethers.Wallet(entityConfig.privateKey, provider);
+            entity.wallet = wallet;
+            entity.address = wallet.address;
 
-        // Load smart account contract
-        const smartAccountContract = new ethers.Contract(
-          entity.smartAccount,
-          this.getSmartAccountABI(),
-          wallet
-        );
-        entity.smartAccountContract = smartAccountContract;
+            // Load smart account contract with wallet
+            const smartAccountContract = new ethers.Contract(
+              entity.smartAccount,
+              this.getSmartAccountABI(),
+              wallet
+            );
+            entity.smartAccountContract = smartAccountContract;
+          } catch (error) {
+            console.warn(
+              `Warning: Could not create wallet for entity ${entity.id}: ${error}`
+            );
+            // Continue without wallet for read-only operations
+          }
+        } else {
+          // For read-only operations, just store the smart account address
+          console.log(
+            `Entity ${entity.id}: Read-only mode (no private key provided)`
+          );
+        }
 
         this.entities.set(entity.id, entity);
       }

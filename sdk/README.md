@@ -9,9 +9,11 @@ A TypeScript SDK for managing cash tokens and smart accounts on blockchain netwo
 - **Cash Token Operations**: Approve, transfer, and check balances with intuitive methods
 - **Smart Account Integration**: Execute operations through smart accounts for enhanced security
 - **Real-time Tracking**: Monitor balances and allowances in real-time
+- **Flow Tracking**: Track token flow between multiple smart addresses
 - **Event System**: Subscribe to balance and allowance changes
 - **Automatic Balance Checking**: SDK automatically checks balances before approvals
 - **Flexible Amount Handling**: Support for string, number, or bigint amounts
+- **Three Initialization Modes**: Support for defaultPrivatekey, connect(), and entities array
 
 ## Installation
 
@@ -44,10 +46,133 @@ Create a configuration file `config/entities.json`:
 }
 ```
 
-### 2. Basic Setup
+### 2. Three Initialization Modes
+
+The SDK supports three different initialization modes:
+
+#### Mode 1: With defaultPrivatekey (Single Entity Operations)
 
 ```typescript
-import { CashTrackerSDK } from "@rumsan/cash-tracker-sdk";
+import { CashTokenSDK } from "@rumsan/cash-tracker-sdk";
+import { ethers } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
+
+// Load config from config/entities.json
+const loadConfig = () => {
+  const configPath = path.join(__dirname, "config/entities.json");
+  const configData = fs.readFileSync(configPath, "utf8");
+  return JSON.parse(configData);
+};
+
+const config = loadConfig();
+const entities = config.entities;
+
+const entity1 = new CashTokenSDK({
+  network: {
+    rpcUrl: config.network,
+    entryPoint: config.entryPoint,
+  },
+  contracts: {
+    cashToken: process.env.CASH_TOKEN!,
+    smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
+    cashtokenAbi: require("./src/artifacts/CashTokenAbi.json"),
+    entitySmartAccount: entities[0].smartAccount,
+    defaultPrivatekey: entities[0].privateKey,
+  },
+});
+
+await entity1.initialize();
+console.log(`Address: ${entity1.address}`);
+console.log(`Smart Account: ${entity1.smartAccount}`);
+```
+
+#### Mode 2: With connect() (Wallet Connection)
+
+```typescript
+import { CashTokenSDK } from "@rumsan/cash-tracker-sdk";
+import { ethers } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
+
+// Load config from config/entities.json
+const loadConfig = () => {
+  const configPath = path.join(__dirname, "config/entities.json");
+  const configData = fs.readFileSync(configPath, "utf8");
+  return JSON.parse(configData);
+};
+
+const config = loadConfig();
+const entities = config.entities;
+
+const entity2 = new CashTokenSDK({
+  network: {
+    rpcUrl: config.network,
+    entryPoint: config.entryPoint,
+  },
+  contracts: {
+    cashToken: process.env.CASH_TOKEN!,
+    smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
+    cashtokenAbi: require("./src/artifacts/CashTokenAbi.json"),
+    entitySmartAccount: entities[1].smartAccount,
+  },
+});
+
+await entity2.initialize();
+entity2.connect(entities[1].privateKey);
+console.log(`Address: ${entity2.address}`);
+```
+
+#### Mode 3: With entities (Smart Addresses Array for Flow Tracking)
+
+```typescript
+import { CashTokenSDK } from "@rumsan/cash-tracker-sdk";
+import { ethers } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
+
+// Load config from config/entities.json
+const loadConfig = () => {
+  const configPath = path.join(__dirname, "config/entities.json");
+  const configData = fs.readFileSync(configPath, "utf8");
+  return JSON.parse(configData);
+};
+
+const config = loadConfig();
+const entities = config.entities;
+
+const smartAddresses = entities.map((entity) => entity.smartAccount);
+
+const flowTracker = new CashTokenSDK({
+  network: {
+    rpcUrl: config.network,
+    entryPoint: config.entryPoint,
+  },
+  contracts: {
+    cashToken: process.env.CASH_TOKEN!,
+    smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
+    cashtokenAbi: require("./src/artifacts/CashTokenAbi.json"),
+  },
+  entities: smartAddresses,
+});
+
+await flowTracker.initialize();
+
+// Start flow tracking
+await flowTracker.startFlowTracking(smartAddresses, {
+  interval: 5000, // Update every 5 seconds
+  onFlowUpdate: (flowData) => {
+    console.log("Flow update detected!");
+    console.log(`Balances: ${flowData.balances.length}`);
+    console.log(`Flows: ${flowData.flows.length}`);
+  },
+});
+```
+
+### 3. Basic Operations
+
+```typescript
+import { CashTokenSDK } from "@rumsan/cash-tracker-sdk";
 import { ethers } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
@@ -63,7 +188,7 @@ const config = loadConfig();
 const entities = config.entities;
 
 // Initialize SDK for Entity 1
-const entity1 = new CashTrackerSDK({
+const entity1 = new CashTokenSDK({
   network: {
     rpcUrl: config.network,
     entryPoint: config.entryPoint,
@@ -79,22 +204,7 @@ const entity1 = new CashTrackerSDK({
 
 // Initialize the SDK
 await entity1.initialize();
-```
 
-### 3. Connect Wallet (Optional)
-
-```typescript
-// Connect using private key
-entity1.connect(entities[0].privateKey);
-
-// Or connect using wallet object
-const wallet = new ethers.Wallet(privateKey, provider);
-entity1.connect(wallet);
-```
-
-### 4. Basic Operations
-
-```typescript
 // Check balance
 const balance = await entity1.getCashBalance();
 console.log(`Balance: ${balance.formatted} ${balance.symbol}`);
@@ -110,6 +220,217 @@ console.log(`Transfer transaction: ${transferResult.hash}`);
 // Check allowances
 const approvedToMe = await entity1.getCashApprovedToMe(ownerAddress);
 const approvedByMe = await entity1.getCashApprovedByMe(spenderAddress);
+```
+
+## Flow Tracking
+
+The SDK provides powerful flow tracking capabilities to monitor token movements between smart addresses:
+
+### Start Flow Tracking
+
+```typescript
+import { CashTokenSDK } from "@rumsan/cash-tracker-sdk";
+import { ethers } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
+
+// Load config from config/entities.json
+const loadConfig = () => {
+  const configPath = path.join(__dirname, "config/entities.json");
+  const configData = fs.readFileSync(configPath, "utf8");
+  return JSON.parse(configData);
+};
+
+const config = loadConfig();
+const entities = config.entities;
+
+const smartAddresses = ["0x1234...", "0x5678...", "0x9abc..."];
+
+const flowTracker = new CashTokenSDK({
+  network: {
+    rpcUrl: config.network,
+    entryPoint: config.entryPoint,
+  },
+  contracts: {
+    cashToken: process.env.CASH_TOKEN!,
+    smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
+    cashtokenAbi: require("./src/artifacts/CashTokenAbi.json"),
+  },
+  entities: smartAddresses,
+});
+
+await flowTracker.initialize();
+
+// Start flow tracking
+await flowTracker.startFlowTracking(smartAddresses, {
+  interval: 3000, // Update every 3 seconds
+  onFlowUpdate: (flowData) => {
+    console.log("🔄 Flow Update Detected!");
+
+    // Display recent flows
+    for (const flow of flowData.flows) {
+      const direction = flow.type === "balance_change" ? "↔" : "→";
+      console.log(
+        `${flow.from} ${direction} ${flow.to}: ${flow.formatted} CASH`
+      );
+    }
+
+    // Display current balances
+    for (const balance of flowData.balances) {
+      console.log(
+        `${balance.entityId}: ${balance.formatted} ${balance.symbol}`
+      );
+    }
+  },
+});
+```
+
+### Flow History Tracking
+
+The SDK automatically tracks complete flow paths (A->B->C) and provides comprehensive history:
+
+```typescript
+// Get complete flow history
+const histories = flowTracker.getFlowHistory();
+
+// Get active flows
+const activeFlows = flowTracker.getActiveFlows();
+
+// Get flow history by specific path
+const pathFlows = flowTracker.getFlowHistoryByPath([
+  "0x1234...",
+  "0x5678...",
+  "0x9abc...",
+]);
+
+// Get flow history for specific address
+const addressFlows = flowTracker.getFlowHistoryByAddress("0x5678...");
+
+// Display flow history
+flowTracker.displayFlowHistory();
+
+// Display active flows
+flowTracker.displayActiveFlows();
+
+// Set flow history options
+flowTracker.setFlowHistoryOptions({
+  maxHistory: 100,
+  includeBlockNumbers: true,
+  includeDescriptions: true,
+});
+```
+
+### Business Logic Flow Example (A->B->C)
+
+```typescript
+// Initialize flow tracker for A->B->C path
+const smartAddresses = ["0xEntityA", "0xEntityB", "0xEntityC"];
+const flowTracker = new CashTokenSDK({
+  network: { rpcUrl: "...", entryPoint: "..." },
+  contracts: { cashToken: "...", cashtokenAbi: "..." },
+  entities: smartAddresses,
+});
+
+await flowTracker.initialize();
+
+// Start tracking A->B->C flows
+await flowTracker.startFlowTracking(smartAddresses, {
+  interval: 2000,
+  onFlowUpdate: (flowData) => {
+    console.log("Flow detected:", flowData.flows.length, "new flows");
+  },
+});
+
+// The SDK will automatically detect and track:
+// 1. A gives allowance to B
+// 2. B gives allowance to C
+// 3. C gets cash from B
+// 4. B gets cash from A
+// 5. Complete A->B->C flow path
+
+// Later, get the complete flow history
+const histories = flowTracker.getFlowHistory();
+for (const history of histories) {
+  console.log(`Flow: ${history.path.join("->")}`);
+  console.log(`Status: ${history.status}`);
+  console.log(`Amount: ${history.formattedTotalAmount} CASH`);
+  console.log(`Steps: ${history.entries.length}`);
+}
+```
+
+### Flow Data Structure
+
+```typescript
+interface TokenFlowData {
+  timestamp: number;
+  flows: TokenFlow[];
+  balances: TokenBalance[];
+  allowances: TokenAllowance[];
+}
+
+interface TokenFlow {
+  from: string;
+  to: string;
+  amount: bigint;
+  formatted: string;
+  transactionHash?: string;
+  timestamp: number;
+  type: "transfer" | "allowance" | "balance_change";
+}
+```
+
+### Flow Tracking Methods
+
+```typescript
+import { CashTokenSDK } from "@rumsan/cash-tracker-sdk";
+import { ethers } from "ethers";
+import * as fs from "fs";
+import * as path from "path";
+
+// Load config from config/entities.json
+const loadConfig = () => {
+  const configPath = path.join(__dirname, "config/entities.json");
+  const configData = fs.readFileSync(configPath, "utf8");
+  return JSON.parse(configData);
+};
+
+const config = loadConfig();
+const entities = config.entities;
+
+const smartAddresses = ["0x1234...", "0x5678...", "0x9abc..."];
+
+const flowTracker = new CashTokenSDK({
+  network: {
+    rpcUrl: config.network,
+    entryPoint: config.entryPoint,
+  },
+  contracts: {
+    cashToken: process.env.CASH_TOKEN!,
+    smartAccountFactory: process.env.SMART_ACCOUNT_FACTORY!,
+    cashtokenAbi: require("./src/artifacts/CashTokenAbi.json"),
+  },
+  entities: smartAddresses,
+});
+
+await flowTracker.initialize();
+
+// Start flow tracking
+await flowTracker.startFlowTracking(smartAddresses, options);
+
+// Stop flow tracking
+await flowTracker.stopFlowTracking();
+
+// Get current flow data
+const flowData = await flowTracker.getFlowData();
+
+// Display flow status
+await flowTracker.displayFlowStatus();
+
+// Check if flow tracking is active
+const isTracking = flowTracker.isFlowTracking();
+
+// Get tracked addresses
+const addresses = flowTracker.getTrackedAddresses();
 ```
 
 ## Configuration
@@ -130,7 +451,14 @@ interface SDKConfig {
     entitySmartAccount?: string;
     defaultPrivatekey?: string;
   };
-  entities?: EntityConfig[];
+  entities?: string[]; // Array of smart addresses for flow tracking
+  flowTracking?: FlowTrackingConfig;
+}
+
+interface FlowTrackingConfig {
+  smartAddresses: string[];
+  interval?: number;
+  onFlowUpdate?: (flowData: TokenFlowData) => void;
 }
 ```
 
@@ -219,7 +547,7 @@ const config = loadConfig();
 const entities = config.entities;
 
 // Initialize two entities
-const companyA = new CashTrackerSDK({
+const companyA = new CashTokenSDK({
   network: {
     rpcUrl: config.network,
     entryPoint: config.entryPoint,
@@ -232,7 +560,7 @@ const companyA = new CashTrackerSDK({
   },
 });
 
-const companyB = new CashTrackerSDK({
+const companyB = new CashTokenSDK({
   network: {
     rpcUrl: config.network,
     entryPoint: config.entryPoint,
