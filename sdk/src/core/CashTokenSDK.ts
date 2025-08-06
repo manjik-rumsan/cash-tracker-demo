@@ -291,7 +291,25 @@ export class CashTokenSDK {
    */
   async getTransactionFlowHistory(
     entities?: string[] | Array<{ smartAddress: string; alias: string }>
-  ): Promise<TransactionFlowHistory> {
+  ): Promise<{
+    entities: Array<{
+      alias: string;
+      pending: Array<{
+        to: string;
+        amount: string;
+      }>;
+      balance: string;
+      sent: string;
+      received: string;
+      flows: Array<{
+        from: string;
+        to: string;
+        amount: string;
+        transactionHash: string;
+        type: "sent" | "received";
+      }>;
+    }>;
+  }> {
     return this.flowTracking.getTransactionFlowHistory(entities);
   }
 

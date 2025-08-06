@@ -172,6 +172,38 @@ export interface TransactionFlowHistory {
   steps: TransactionFlowStep[];
   flows: TransactionFlow[];
   blockchainInfo: BlockchainInfo;
+  entities: EntityOutcome[]; // New: Final state of each entity
+  approvals: ApprovalEvent[]; // New: Approval events
+}
+
+// New interfaces for entity outcomes
+export interface EntityOutcome {
+  smartAddress: string;
+  alias?: string;
+  balance: string;
+  pending: string; // Total amount approved by this entity to others
+  received: string; // Total amount received
+  sent: string; // Total amount sent
+  netFlow: string; // received - sent
+}
+
+// New interfaces for approval events
+export interface ApprovalEvent {
+  approvalId: string;
+  owner: {
+    address: string;
+    alias?: string;
+  };
+  spender: {
+    address: string;
+    alias?: string;
+  };
+  amount: string;
+  transactionHash: string;
+  blockNumber: number;
+  timestamp: number;
+  type: "approval" | "approvalForAll" | "transferFrom";
+  status: "completed" | "pending";
 }
 
 // Operation Types

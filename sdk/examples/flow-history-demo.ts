@@ -14,79 +14,45 @@ const loadConfig = () => {
 };
 
 // Helper function to format the comprehensive flow history
-const formatTransactionFlowHistory = (data: any) => {
-  console.log("\n📊 TRANSACTION FLOW HISTORY");
-  console.log("=".repeat(60));
+function formatTransactionFlowHistory(flowHistory: any) {
+  console.log("📊 SIMPLIFIED FLOW HISTORY");
+  console.log("=".repeat(50));
 
-  // Summary
-  console.log("\n📋 SUMMARY:");
-  console.log(`   Total Paths: ${data.summary.totalPaths}`);
-  console.log(`   Total Flows: ${data.summary.totalFlows}`);
-  console.log(`   Total Amount: ${data.summary.totalAmount}`);
-  console.log(`   Total Transactions: ${data.summary.totalTransactions}`);
-  console.log(
-    `   Time Range: ${new Date(
-      data.summary.timeRange.start
-    ).toLocaleString()} → ${new Date(
-      data.summary.timeRange.end
-    ).toLocaleString()}`
-  );
-
-  // Paths
-  console.log("\n🛤️  PATHS:");
-  data.paths.forEach((path: any, index: number) => {
-    console.log(`\n   ${index + 1}. ${path.pathAliases.join(" → ")}`);
-    console.log(`      ID: ${path.id}`);
-    console.log(`      Total Flows: ${path.totalFlows}`);
-    console.log(`      Total Amount: ${path.totalAmount}`);
-    console.log(`      Entity Totals:`);
-    Object.entries(path.entityTotalsWithAliases).forEach(
-      ([alias, totals]: [string, any]) => {
-        console.log(
-          `         ${alias}: Received ${totals.received}, Sent ${totals.sent}, Balance ${totals.balance}`
-        );
-      }
-    );
-  });
-
-  // Steps
-  console.log("\n👣 STEPS:");
-  data.steps.forEach((step: any) => {
+  // Entities with their flows
+  console.log("👥 ENTITIES:");
+  flowHistory.entities.forEach((entity: any) => {
     console.log(
-      `\n   Step ${step.stepNumber}: ${step.from.alias} (${step.from.role}) → ${step.to.alias} (${step.to.role})`
+      `   ${entity.alias}: Balance ${entity.balance}, Sent ${entity.sent}, Received ${entity.received}`
     );
-    console.log(`      Amount: ${step.amount}`);
-    console.log(`      TX: ${step.transactionHash.slice(0, 10)}...`);
-    console.log(`      Block: ${step.blockNumber}`);
-    console.log(`      Time: ${new Date(step.timestamp).toLocaleString()}`);
-    console.log(`      Status: ${step.status}`);
-  });
 
-  // Flows
-  console.log("\n🌊 FLOWS:");
-  data.flows.forEach((flow: any) => {
-    console.log(`\n   ${flow.flowId}: ${flow.from.alias} → ${flow.to.alias}`);
-    console.log(`      Path ID: ${flow.pathId}`);
-    console.log(`      Amount: ${flow.amount}`);
-    console.log(`      Type: ${flow.type}`);
-    console.log(`      TX: ${flow.transactionHash.slice(0, 10)}...`);
-    console.log(`      Block: ${flow.blockNumber}`);
-    console.log(`      Time: ${new Date(flow.timestamp).toLocaleString()}`);
-  });
+    // Show pending allowances
+    if (entity.pending && entity.pending.length > 0) {
+      console.log(`      Pending Allowances:`);
+      entity.pending.forEach((pending: any, index: number) => {
+        console.log(
+          `        ${index + 1}. To ${pending.to}: ${pending.amount}`
+        );
+      });
+    } else {
+      console.log(`      Pending Allowances: None`);
+    }
 
-  // Blockchain Info
-  console.log("\n⛓️  BLOCKCHAIN INFO:");
-  console.log(`   Network: ${data.blockchainInfo.network}`);
-  console.log(
-    `   Contract: ${data.blockchainInfo.contractAddress.slice(0, 10)}...`
-  );
-  console.log(`   Last Block: ${data.blockchainInfo.lastBlockNumber}`);
-  console.log(
-    `   Query Time: ${new Date(
-      data.blockchainInfo.queryTimestamp
-    ).toLocaleString()}`
-  );
-};
+    if (entity.flows && entity.flows.length > 0) {
+      console.log(`      Flows:`);
+      entity.flows.forEach((flow: any, index: number) => {
+        const typeIcon = flow.type === "sent" ? "➡️" : "⬅️";
+        console.log(
+          `        ${index + 1}. ${typeIcon} ${flow.from} → ${flow.to}: ${
+            flow.amount
+          } (${flow.type})`
+        );
+      });
+    } else {
+      console.log(`      Flows: None`);
+    }
+    console.log("");
+  });
+}
 
 export async function flowHistoryDemo(): Promise<void> {
   console.log("🚀 Cash Tracker SDK - Transaction Flow History Demo\n");
