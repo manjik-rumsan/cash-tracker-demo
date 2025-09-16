@@ -86,6 +86,23 @@ contract Aggregator {
             });
         }
     }
+
+    function getSerialAllowances(address token, address[] memory accounts) external view returns (AllowanceData[] memory allowances){
+        require(token != address(0), "Invalid token address");
+        require(accounts.length > 1, "At least two accounts required");
+        
+        IERC20 tokenContract = IERC20(token);
+        allowances = new AllowanceData[](accounts.length - 1);
+        
+        for (uint256 i = 0; i < accounts.length - 1; i++) {
+            allowances[i] = AllowanceData({
+                owner: accounts[i],
+                spender: accounts[i + 1],
+                allowance: tokenContract.allowance(accounts[i], accounts[i + 1])
+            });
+        }
+
+    }
     
     /**
      * @dev Get allowances from specific owners to specific spenders
